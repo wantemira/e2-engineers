@@ -81,6 +81,19 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 		t.Fatalf("expected review with findings: %+v", initial)
 	}
 	first := initial.Result.Review
+	location := first.Findings[0].Location
+	if first.Diff != "" || location == nil || !strings.HasSuffix(location.URL, "/diff#finding-1") {
+		t.Fatalf("review must expose a link without embedding the diff: %+v", first)
+	}
+	diffURL := api.URL + location.URL
+	var diffPage string
+	apiCall(t, client, "GET", diffURL, "", nil, http.StatusOK, &diffPage)
+	if !strings.Contains(diffPage, `id="finding-1"`) || !strings.Contains(diffPage, "create order failed") {
+		t.Fatal("diff is missing the target line")
+	}
+	apiCall(t, other, "GET", diffURL, "", nil, http.StatusNotFound, nil)
+	apiCall(t, client, "POST", api.URL+"/api/v1/operations/"+operationID+"/retry", "wrong-key", struct{}{}, http.StatusConflict, nil)
+	apiCall(t, client, "POST", api.URL+"/api/v1/operations/"+operationID+"/retry", "message-1", struct{}{}, http.StatusAccepted, nil)
 	apiCall(t, other, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &empty)
 	if len(empty.Reviews) != 0 || len(empty.Messages) != 0 {
 		t.Fatalf("another session saw the workspace: %+v", empty)
@@ -115,10 +128,90 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 	if len(restored.Reviews) != 2 || restored.ReviewRequests["e2-engineers#17"].ID != receipt.Result.ReviewRequest.ID {
 		t.Fatalf("expected saved reviews and receipt after reopening: %+v", restored)
 	}
+	apiCall(t, client, "GET", restoredAPI.URL+location.URL, "", nil, http.StatusOK, &diffPage)
+	if !strings.Contains(diffPage, first.HeadSHA) || !strings.Contains(diffPage, "create order failed") {
+		t.Fatal("diff must still show the snapshot of the original revision")
+	}
 	var doc string
 	apiCall(t, client, "GET", restoredAPI.URL+"/api/v1/context/documents/review-rules", "", nil, http.StatusOK, &doc)
 	if !strings.Contains(doc, `id="GO-ERR-01"`) {
 		t.Fatal("rule link target missing from document")
+	}
+}
+
+func TestInvalidRequestsAndPRReferences(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	store, err := repository.NewStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := service.NewService(store, nil, assistant.NewLocalAssistant(), teamconfig.New(root))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	})
+	api := httptest.NewServer(httpapi.NewHTTPHandler(app, http.NotFoundHandler(), nil))
+	t.Cleanup(api.Close)
+	client := sessionClient(t)
+	for _, tc := range []struct {
+		path   string
+		body   string
+		key    string
+		origin string
+		status int
+	}{
+		{"/messages", `{"text":" "}`, "key", "", http.StatusBadRequest},
+		{"/messages", `{"unknown":true}`, "key", "", http.StatusBadRequest},
+		{"/messages", `{"text":"привет"} {}`, "key", "", http.StatusBadRequest},
+		{"/messages", `{"text":"привет"}`, "", "", http.StatusBadRequest},
+		{"/messages", `{"text":"привет"}`, "key", "https://other.example.test", http.StatusForbidden},
+		{"/self-reviews", `{"pr_ref":""}`, "key", "", http.StatusBadRequest},
+		{"/review-requests", `{"review_run_id":"x"}`, "key", "", http.StatusBadRequest},
+		{"/operations/unknown/retry", `{}`, "key", "", http.StatusNotFound},
+	} {
+		req, err := http.NewRequest("POST", api.URL+"/api/v1"+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Idempotency-Key", tc.key)
+		req.Header.Set("Origin", tc.origin)
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != tc.status {
+			t.Errorf("%s %q returned %d, want %d", tc.path, tc.body, response.StatusCode, tc.status)
+		}
+	}
+
+	apiCall(t, client, "GET", api.URL+"/api/v1/context/documents/unknown", "", nil, http.StatusNotFound, nil)
+	for _, tc := range []struct {
+		ref  string
+		code string
+	}{
+		{"https://other.example.test/org/repo/pull/17", "INVALID_INPUT"},
+		{"https://github.com/other/repo/pull/17", "NOT_FOUND"},
+		{"https://github.com/wantemira/e2-engineers/pull/nope", "INVALID_INPUT"},
+		{"99", "NOT_FOUND"},
+	} {
+		id := submitForTest(t, client, api.URL, "/self-reviews", tc.ref, map[string]string{"pr_ref": tc.ref})
+		operation := waitForOperation(t, client, api.URL, id)
+		if operation.State != "FAILED" || operation.Error == nil || operation.Error.Code != tc.code {
+			t.Errorf("unexpected operation for %q: %+v", tc.ref, operation)
+		}
+		apiCall(t, client, "POST", api.URL+"/api/v1/operations/"+id+"/retry", tc.ref, struct{}{}, http.StatusConflict, nil)
+	}
+	message := map[string]string{"text": "Как оформить больничный?"}
+	id := submitForTest(t, client, api.URL, "/messages", "people", message)
+	operation := waitForOperation(t, client, api.URL, id)
+	if operation.Result == nil || len(operation.Result.Messages) != 2 || len(operation.Result.Messages[1].Links) == 0 {
+		t.Fatalf("expected a People answer with a link: %+v", operation)
 	}
 }
 
