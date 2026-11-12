@@ -1,4 +1,4 @@
-package buddy
+package mcpgit
 
 import (
 	"context"
@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/storage/jsonfile"
 )
 
 type gitFixture struct {
@@ -23,18 +25,18 @@ type gitFixture struct {
 }
 
 type gitRevision struct {
-	PR     PullRequest `json:"pr"`
-	Checks Checks      `json:"checks"`
+	PR     domain.PullRequest `json:"pr"`
+	Checks domain.Checks      `json:"checks"`
 }
 
 type gitAction struct {
-	Fingerprint string        `json:"fingerprint"`
-	Receipt     ReviewRequest `json:"receipt"`
+	Fingerprint string               `json:"fingerprint"`
+	Receipt     domain.ReviewRequest `json:"receipt"`
 }
 
 type gitState struct {
-	Actions map[string]gitAction     `json:"actions"`
-	Reviews map[string]ReviewRequest `json:"reviews"`
+	Actions map[string]gitAction            `json:"actions"`
+	Reviews map[string]domain.ReviewRequest `json:"reviews"`
 }
 
 type gitServer struct {
@@ -68,7 +70,7 @@ func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) 
 	server := &gitServer{
 		fixturePath: fixturePath,
 		statePath:   statePath,
-		state:       gitState{Actions: make(map[string]gitAction), Reviews: make(map[string]ReviewRequest)},
+		state:       gitState{Actions: make(map[string]gitAction), Reviews: make(map[string]domain.ReviewRequest)},
 	}
 	if _, err := server.revision(); err != nil {
 		return nil, err
@@ -103,20 +105,20 @@ func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) 
 func (server *gitServer) tools(actor string) *mcp.Server {
 	tools := mcp.NewServer(&mcp.Implementation{Name: "ai-buddy-git", Version: "0.1.0"}, nil)
 	mcp.AddTool(tools, &mcp.Tool{Name: "get_pull_request", Description: "Read an allowed pull request and its current diff"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input prArguments) (*mcp.CallToolResult, PullRequest, error) {
+		func(ctx context.Context, _ *mcp.CallToolRequest, input prArguments) (*mcp.CallToolResult, domain.PullRequest, error) {
 			revision, err := server.read(ctx, actor, input.Number)
 			return nil, revision.PR, toolError(err)
 		})
 	mcp.AddTool(tools, &mcp.Tool{Name: "get_pull_request_checks", Description: "Read CI status for a specific pull request version"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input checkArguments) (*mcp.CallToolResult, Checks, error) {
+		func(ctx context.Context, _ *mcp.CallToolRequest, input checkArguments) (*mcp.CallToolResult, domain.Checks, error) {
 			revision, err := server.read(ctx, actor, input.Number)
 			if err == nil && revision.PR.HeadSHA != input.HeadSHA {
-				err = Problem("STALE_HEAD", "Версия PR изменилась.")
+				err = domain.Problem("STALE_HEAD", "Версия PR изменилась.")
 			}
 			return nil, revision.Checks, toolError(err)
 		})
 	mcp.AddTool(tools, &mcp.Tool{Name: "request_pull_request_review", Description: "Register a confirmed review request for the configured mentor"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input reviewArguments) (*mcp.CallToolResult, ReviewRequest, error) {
+		func(ctx context.Context, _ *mcp.CallToolRequest, input reviewArguments) (*mcp.CallToolResult, domain.ReviewRequest, error) {
 			receipt, err := server.requestReview(ctx, actor, input)
 			return nil, receipt, toolError(err)
 		})
@@ -149,23 +151,23 @@ func (server *gitServer) read(ctx context.Context, actor string, number int) (gi
 		return gitRevision{}, err
 	}
 	if actor != "intern-1" || number != 17 {
-		return gitRevision{}, Problem("NOT_FOUND", "PR недоступен.")
+		return gitRevision{}, domain.Problem("NOT_FOUND", "PR недоступен.")
 	}
 	return server.revision()
 }
 
-func (server *gitServer) requestReview(ctx context.Context, actor string, input reviewArguments) (ReviewRequest, error) {
+func (server *gitServer) requestReview(ctx context.Context, actor string, input reviewArguments) (domain.ReviewRequest, error) {
 	if err := ctx.Err(); err != nil {
-		return ReviewRequest{}, err
+		return domain.ReviewRequest{}, err
 	}
 	if actor != "intern-1" || input.Number != 17 {
-		return ReviewRequest{}, Problem("NOT_FOUND", "PR недоступен.")
+		return domain.ReviewRequest{}, domain.Problem("NOT_FOUND", "PR недоступен.")
 	}
 	if input.ActionKey == "" || len(input.ActionKey) > 128 || input.ExpectedHeadSHA == "" {
-		return ReviewRequest{}, Problem("INVALID_INPUT", "Не заданы параметры подтверждения.")
+		return domain.ReviewRequest{}, domain.Problem("INVALID_INPUT", "Не заданы параметры подтверждения.")
 	}
 	if input.MentorID != "mentor-backend" {
-		return ReviewRequest{}, Problem("INVALID_INPUT", "Наставник изменился. Подтвердите отправку заново.")
+		return domain.ReviewRequest{}, domain.Problem("INVALID_INPUT", "Наставник изменился. Подтвердите отправку заново.")
 	}
 
 	server.mu.Lock()
@@ -174,35 +176,35 @@ func (server *gitServer) requestReview(ctx context.Context, actor string, input 
 	fingerprint := fmt.Sprintf("%d:%s:%s", input.Number, input.ExpectedHeadSHA, input.MentorID)
 	if action, exists := server.state.Actions[key]; exists {
 		if action.Fingerprint != fingerprint {
-			return ReviewRequest{}, Problem("IDEMPOTENCY_CONFLICT", "Ключ уже использован для другого действия.")
+			return domain.ReviewRequest{}, domain.Problem("IDEMPOTENCY_CONFLICT", "Ключ уже использован для другого действия.")
 		}
 		return action.Receipt, nil
 	}
 	revision, err := server.read(ctx, actor, input.Number)
 	if err != nil {
-		return ReviewRequest{}, err
+		return domain.ReviewRequest{}, err
 	}
 	if revision.PR.HeadSHA != input.ExpectedHeadSHA {
-		return ReviewRequest{}, Problem("STALE_HEAD", "Версия PR изменилась.")
+		return domain.ReviewRequest{}, domain.Problem("STALE_HEAD", "Версия PR изменилась.")
 	}
 	businessKey := fmt.Sprintf("%s:%d:%s", actor, input.Number, input.MentorID)
 	receipt, exists := server.state.Reviews[businessKey]
 	if !exists {
 		var random [8]byte
 		if _, err := rand.Read(random[:]); err != nil {
-			return ReviewRequest{}, fmt.Errorf("generate review ID: %w", err)
+			return domain.ReviewRequest{}, fmt.Errorf("generate review ID: %w", err)
 		}
-		receipt = ReviewRequest{
+		receipt = domain.ReviewRequest{
 			ID: "RR-" + hex.EncodeToString(random[:]), Status: "REQUESTED",
-			Mentor:   Mentor{ID: input.MentorID, Name: "Алексей, Backend"},
+			Mentor:   domain.Mentor{ID: input.MentorID, Name: "Алексей, Backend"},
 			PRNumber: input.Number, HeadSHA: input.ExpectedHeadSHA,
 		}
 	}
 	updated := gitState{Actions: maps.Clone(server.state.Actions), Reviews: maps.Clone(server.state.Reviews)}
 	updated.Actions[key] = gitAction{Fingerprint: fingerprint, Receipt: receipt}
 	updated.Reviews[businessKey] = receipt
-	if err := writeState(server.statePath, updated); err != nil {
-		return ReviewRequest{}, err
+	if err := jsonfile.Write(server.statePath, updated); err != nil {
+		return domain.ReviewRequest{}, err
 	}
 	server.state = updated
 	return receipt, nil
@@ -212,102 +214,10 @@ func toolError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var problem *AppError
+	var problem *domain.AppError
 	if !errors.As(err, &problem) {
-		problem = &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис временно недоступен.", Retryable: true}
+		problem = &domain.AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис временно недоступен.", Retryable: true}
 	}
 	data, _ := json.Marshal(problem)
 	return errors.New(string(data))
-}
-
-type mcpGit struct {
-	endpoint string
-	secret   string
-}
-
-func NewMCPGit(endpoint, secret string) GitTools {
-	return &mcpGit{endpoint: endpoint, secret: secret}
-}
-
-func (git *mcpGit) GetPullRequest(ctx context.Context, actor string, number int) (PullRequest, error) {
-	var output PullRequest
-	err := git.call(ctx, actor, "get_pull_request", prArguments{Number: number}, &output)
-	return output, err
-}
-
-func (git *mcpGit) GetChecks(ctx context.Context, actor string, number int, sha string) (Checks, error) {
-	var output Checks
-	err := git.call(ctx, actor, "get_pull_request_checks", checkArguments{Number: number, HeadSHA: sha}, &output)
-	return output, err
-}
-
-func (git *mcpGit) RequestReview(ctx context.Context, actor string, number int, sha string, mentor Mentor, key string) (ReviewRequest, error) {
-	var output ReviewRequest
-	err := git.call(ctx, actor, "request_pull_request_review", reviewArguments{
-		Number: number, ExpectedHeadSHA: sha, MentorID: mentor.ID, ActionKey: key,
-	}, &output)
-	return output, err
-}
-
-type actorTransport struct {
-	actor  string
-	secret string
-}
-
-func (transport actorTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	copy := request.Clone(request.Context())
-	copy.Header.Set("Authorization", "Bearer "+transport.secret)
-	copy.Header.Set("X-Buddy-Actor", transport.actor)
-	return http.DefaultTransport.RoundTrip(copy)
-}
-
-func (git *mcpGit) call(ctx context.Context, actor, name string, arguments, output any) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	client := mcp.NewClient(&mcp.Implementation{Name: "ai-buddy", Version: "0.1.0"}, nil)
-	transport := &mcp.StreamableClientTransport{
-		Endpoint:             git.endpoint,
-		HTTPClient:           &http.Client{Transport: actorTransport{actor: actor, secret: git.secret}},
-		DisableStandaloneSSE: true,
-		MaxRetries:           -1,
-	}
-	session, err := client.Connect(ctx, transport, nil)
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис временно недоступен.", Retryable: true}
-	}
-	defer session.Close()
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: arguments})
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Не удалось выполнить Git-операцию.", Retryable: true}
-	}
-	if result.IsError {
-		for _, content := range result.Content {
-			text, ok := content.(*mcp.TextContent)
-			if !ok {
-				continue
-			}
-			var problem AppError
-			if json.Unmarshal([]byte(text.Text), &problem) == nil && problem.Code != "" {
-				return &problem
-			}
-		}
-		return &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис отклонил операцию.", Retryable: true}
-	}
-	data, err := json.Marshal(result.StructuredContent)
-	if err != nil {
-		return fmt.Errorf("encode MCP result: %w", err)
-	}
-	if string(data) == "null" {
-		return &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис вернул пустой ответ.", Retryable: true}
-	}
-	if err := json.Unmarshal(data, output); err != nil {
-		return fmt.Errorf("decode MCP result: %w", err)
-	}
-	return nil
 }

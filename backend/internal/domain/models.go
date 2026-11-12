@@ -1,7 +1,7 @@
-package buddy
+package domain
 
 import (
-	"context"
+	"errors"
 	"time"
 )
 
@@ -109,17 +109,6 @@ type ChatInput struct {
 	Team          Team
 }
 
-type Assistant interface {
-	Answer(context.Context, ChatInput) (Message, error)
-	Review(context.Context, PullRequest, Checks, Team) ([]Finding, error)
-}
-
-type GitTools interface {
-	GetPullRequest(context.Context, string, int) (PullRequest, error)
-	GetChecks(context.Context, string, int, string) (Checks, error)
-	RequestReview(context.Context, string, int, string, Mentor, string) (ReviewRequest, error)
-}
-
 type AppError struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
@@ -130,6 +119,14 @@ func (err *AppError) Error() string { return err.Code + ": " + err.Message }
 
 func Problem(code, message string) *AppError {
 	return &AppError{Code: code, Message: message}
+}
+
+func PublicError(err error) *AppError {
+	var problem *AppError
+	if errors.As(err, &problem) {
+		return problem
+	}
+	return &AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Сервис временно недоступен. Повторите запрос.", Retryable: true}
 }
 
 type Result struct {
@@ -152,4 +149,24 @@ type Operation struct {
 	Result    *Result   `json:"result,omitempty"`
 	Error     *AppError `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Session struct {
+	ID        string    `json:"id"`
+	ActorID   string    `json:"actor_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Workspace struct {
+	Messages       []Message                `json:"messages"`
+	Reviews        []ReviewRun              `json:"reviews"`
+	ReviewRequests map[string]ReviewRequest `json:"review_requests"`
+}
+
+type Job struct {
+	Operation Operation `json:"operation"`
+	Owner     string    `json:"owner"`
+	ActorID   string    `json:"-"`
+	Command   Command   `json:"command"`
+	Key       string    `json:"key"`
 }

@@ -15,7 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wantemira/e2-engineers/backend/internal/buddy"
+	"github.com/wantemira/e2-engineers/backend/internal/assistant"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/repository"
+	"github.com/wantemira/e2-engineers/backend/internal/service"
+	"github.com/wantemira/e2-engineers/backend/internal/teamconfig"
+	"github.com/wantemira/e2-engineers/backend/internal/transport/httpapi"
 )
 
 func main() {
@@ -32,7 +37,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
-	if _, err := buddy.LoadTeam(root); err != nil {
+	teams := teamconfig.New(root)
+	if _, err := teams.Load(); err != nil {
 		return err
 	}
 	address := os.Getenv("HTTP_ADDR")
@@ -43,12 +49,12 @@ func run() error {
 	if dataDir == "" {
 		dataDir = filepath.Join(root, ".data")
 	}
-	store, err := buddy.NewStore(filepath.Join(dataDir, "application.json"))
+	store, err := repository.NewStore(filepath.Join(dataDir, "application.json"))
 	if err != nil {
 		return err
 	}
 	secret := rand.Text()
-	gitHandler, err := buddy.NewGitHandler(filepath.Join(root, "mocks", "pr-17.json"), filepath.Join(dataDir, "git.json"), secret)
+	gitHandler, err := mcpgit.NewGitHandler(filepath.Join(root, "mocks", "pr-17.json"), filepath.Join(dataDir, "git.json"), secret)
 	if err != nil {
 		return err
 	}
@@ -65,18 +71,18 @@ func run() error {
 			endpoint.IP = net.IPv6loopback
 		}
 	}
-	git := buddy.NewMCPGit("http://"+endpoint.String()+"/internal/mcp", secret)
-	service := buddy.NewService(store, git, buddy.NewLocalAssistant(), root)
+	git := mcpgit.NewMCPGit("http://"+endpoint.String()+"/internal/mcp", secret)
+	app := service.NewService(store, git, assistant.NewLocalAssistant(), teams)
 	origins := []string{"http://127.0.0.1:5173", "http://localhost:5173"}
 	if configured := os.Getenv("FRONTEND_ORIGIN"); configured != "" {
 		origins = []string{configured}
 	}
-	server := &http.Server{Addr: address, Handler: buddy.NewHTTPHandler(service, gitHandler, origins),
+	server := &http.Server{Addr: address, Handler: httpapi.NewHTTPHandler(app, gitHandler, origins),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	workerDone := make(chan error, 1)
-	go func() { workerDone <- service.Run(ctx) }()
+	go func() { workerDone <- app.Run(ctx) }()
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(listener) }()
 	slog.Info("AI-Buddy API started", "address", listener.Addr().String(), "assistant", "local", "storage", dataDir)

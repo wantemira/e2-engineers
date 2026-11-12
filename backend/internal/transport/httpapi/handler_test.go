@@ -1,4 +1,4 @@
-package buddy
+package httpapi_test
 
 import (
 	"bytes"
@@ -8,37 +8,62 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wantemira/e2-engineers/backend/internal/assistant"
+	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/repository"
+	"github.com/wantemira/e2-engineers/backend/internal/service"
+	"github.com/wantemira/e2-engineers/backend/internal/teamconfig"
+	"github.com/wantemira/e2-engineers/backend/internal/transport/httpapi"
 )
 
 func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
-	fixture, gitState := gitTestFiles(t)
-	gitServer := startGitTestServer(t, fixture, gitState)
-	statePath := filepath.Join(t.TempDir(), "application.json")
-	store, err := NewStore(statePath)
+	root := filepath.Join("..", "..", "..", "..")
+	directory := t.TempDir()
+	fixture := filepath.Join(directory, "pr.json")
+	data, err := os.ReadFile(filepath.Join(root, "mocks", "pr-17.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join("..", "..", "..")
-	git := NewMCPGit(gitServer.URL, "test-secret")
-	service := NewService(store, git, NewLocalAssistant(), root)
+	if err := os.WriteFile(fixture, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "test-secret"
+	gitHandler, err := mcpgit.NewGitHandler(fixture, filepath.Join(directory, "git-state.json"), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitServer := httptest.NewServer(gitHandler)
+	t.Cleanup(gitServer.Close)
+	statePath := filepath.Join(directory, "application.json")
+	store, err := repository.NewStore(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	git := mcpgit.NewMCPGit(gitServer.URL, secret)
+	teams := teamconfig.New(root)
+	localAssistant := assistant.NewLocalAssistant()
+	app := service.NewService(store, git, localAssistant, teams)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- service.Run(ctx) }()
+	go func() { done <- app.Run(ctx) }()
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; err != nil {
 			t.Error(err)
 		}
 	})
-	api := httptest.NewServer(NewHTTPHandler(service, http.NotFoundHandler(), nil))
+	api := httptest.NewServer(httpapi.NewHTTPHandler(app, http.NotFoundHandler(), nil))
 	t.Cleanup(api.Close)
 	client := sessionClient(t)
 	other := sessionClient(t)
-	var empty workspace
+	var empty domain.Workspace
 	apiCall(t, client, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &empty)
 	if empty.Messages == nil || empty.Reviews == nil || empty.ReviewRequests == nil {
 		t.Fatalf("workspace collections must be present: %+v", empty)
@@ -61,7 +86,7 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 		t.Fatalf("another session saw the workspace: %+v", empty)
 	}
 
-	useFixedRevision(t, fixture)
+	useFixedRevision(t, fixture, data)
 	confirmation := map[string]string{"review_run_id": first.ID, "expected_mentor_id": first.Mentor.ID}
 	stale := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/review-requests", "stale-1", confirmation))
 	if stale.State != "FAILED" || stale.Error == nil || stale.Error.Code != "STALE_HEAD" {
@@ -78,13 +103,14 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 		t.Fatalf("expected receipt for current revision: %+v", receipt)
 	}
 
-	reopened, err := NewStore(statePath)
+	reopened, err := repository.NewStore(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	restoredAPI := httptest.NewServer(NewHTTPHandler(NewService(reopened, git, NewLocalAssistant(), root), http.NotFoundHandler(), nil))
+	restoredApp := service.NewService(reopened, git, localAssistant, teams)
+	restoredAPI := httptest.NewServer(httpapi.NewHTTPHandler(restoredApp, http.NotFoundHandler(), nil))
 	t.Cleanup(restoredAPI.Close)
-	var restored workspace
+	var restored domain.Workspace
 	apiCall(t, client, "GET", restoredAPI.URL+"/api/v1/workspace", "", nil, http.StatusOK, &restored)
 	if len(restored.Reviews) != 2 || restored.ReviewRequests["e2-engineers#17"].ID != receipt.Result.ReviewRequest.ID {
 		t.Fatalf("expected saved reviews and receipt after reopening: %+v", restored)
@@ -93,6 +119,22 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 	apiCall(t, client, "GET", restoredAPI.URL+"/api/v1/context/documents/review-rules", "", nil, http.StatusOK, &doc)
 	if !strings.Contains(doc, `id="GO-ERR-01"`) {
 		t.Fatal("rule link target missing from document")
+	}
+}
+
+func useFixedRevision(t *testing.T, path string, initial []byte) {
+	t.Helper()
+	var fixture map[string]json.RawMessage
+	if err := json.Unmarshal(initial, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	fixture["current_revision"] = json.RawMessage(`"fixed"`)
+	data, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -117,10 +159,10 @@ func submitForTest(t *testing.T, client *http.Client, base, path, key string, pa
 	return accepted.ID
 }
 
-func waitForOperation(t *testing.T, client *http.Client, base, id string) Operation {
+func waitForOperation(t *testing.T, client *http.Client, base, id string) domain.Operation {
 	t.Helper()
 	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); {
-		var operation Operation
+		var operation domain.Operation
 		apiCall(t, client, "GET", base+"/api/v1/operations/"+id, "", nil, http.StatusOK, &operation)
 		if operation.State != "QUEUED" && operation.State != "RUNNING" {
 			return operation
@@ -128,7 +170,7 @@ func waitForOperation(t *testing.T, client *http.Client, base, id string) Operat
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("operation %s did not finish", id)
-	return Operation{}
+	return domain.Operation{}
 }
 
 func apiCall(t *testing.T, client *http.Client, method, url, key string, payload any, want int, output any) {

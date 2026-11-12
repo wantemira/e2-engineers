@@ -1,4 +1,4 @@
-package buddy
+package mcpgit
 
 import (
 	"context"
@@ -11,11 +11,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/wantemira/e2-engineers/backend/internal/domain"
 )
 
 func gitTestFiles(t *testing.T) (string, string) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "mocks", "pr-17.json"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "mocks", "pr-17.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ func startGitTestServer(t *testing.T, fixture, state string) *httptest.Server {
 
 func requireGitError(t *testing.T, err error, code string) {
 	t.Helper()
-	var problem *AppError
+	var problem *domain.AppError
 	if !errors.As(err, &problem) || problem.Code != code {
 		t.Fatalf("expected %s, got %v", code, err)
 	}
@@ -110,7 +112,7 @@ func TestMCPRejectsForeignPRAndActor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := client.GetPullRequest(context.Background(), test.actor, test.number)
 			requireGitError(t, err, "NOT_FOUND")
-			_, err = client.RequestReview(context.Background(), test.actor, test.number, "sha", Mentor{ID: "mentor-backend"}, "confirm")
+			_, err = client.RequestReview(context.Background(), test.actor, test.number, "sha", domain.Mentor{ID: "mentor-backend"}, "confirm")
 			requireGitError(t, err, "NOT_FOUND")
 		})
 	}
@@ -138,7 +140,7 @@ func TestMCPReviewRequestIsDurableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mentor := Mentor{ID: "mentor-backend", Name: "Caller cannot replace the mentor name"}
+	mentor := domain.Mentor{ID: "mentor-backend", Name: "Caller cannot replace the mentor name"}
 	receipt, err := client.RequestReview(ctx, "intern-1", 17, pr.HeadSHA, mentor, "confirm-1")
 	if err != nil {
 		t.Fatal(err)
@@ -183,11 +185,11 @@ func TestConcurrentMCPReviewRequestsCreateOneReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var workers sync.WaitGroup
-	results := make(chan ReviewRequest, 4)
+	results := make(chan domain.ReviewRequest, 4)
 	errors := make(chan error, 4)
 	for range 4 {
 		workers.Go(func() {
-			receipt, err := client.RequestReview(context.Background(), "intern-1", 17, pr.HeadSHA, Mentor{ID: "mentor-backend"}, "same-key")
+			receipt, err := client.RequestReview(context.Background(), "intern-1", 17, pr.HeadSHA, domain.Mentor{ID: "mentor-backend"}, "same-key")
 			results <- receipt
 			errors <- err
 		})
@@ -230,7 +232,7 @@ func TestMCPRejectsInvalidReviewConfirmation(t *testing.T) {
 		{name: "unknown mentor", sha: pr.HeadSHA, mentor: "other", key: "confirm"},
 	} {
 		t.Run(input.name, func(t *testing.T) {
-			_, err := client.RequestReview(context.Background(), "intern-1", 17, input.sha, Mentor{ID: input.mentor}, input.key)
+			_, err := client.RequestReview(context.Background(), "intern-1", 17, input.sha, domain.Mentor{ID: input.mentor}, input.key)
 			requireGitError(t, err, "INVALID_INPUT")
 		})
 	}
