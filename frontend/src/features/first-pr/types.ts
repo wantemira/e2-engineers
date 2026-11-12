@@ -53,6 +53,7 @@ export interface ReviewRun {
     url: string;
   };
   findings: Finding[];
+  assessment?: { scope: string; task: string };
   checks: {
     status: "PASSED" | "FAILED" | "RUNNING" | "UNKNOWN";
     label: string;

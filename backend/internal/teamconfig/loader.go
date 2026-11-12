@@ -84,8 +84,12 @@ func (loader *Loader) Load() (domain.Team, error) {
 		}
 	}
 	for _, id := range []string{"GO-ERR-01", "GO-TEST-01"} {
-		rule, ok := team.Rules[id]
-		if !ok || rule.ID != id || rule.Label == "" || rule.URL != "/api/v1/context/documents/review-rules#"+id {
+		if _, ok := team.Rules[id]; !ok {
+			return domain.Team{}, fmt.Errorf("missing team rule %s", id)
+		}
+	}
+	for id, rule := range team.Rules {
+		if rule.ID != id || rule.Label == "" || rule.URL != "/api/v1/context/documents/review-rules#"+id {
 			return domain.Team{}, fmt.Errorf("invalid team rule %s", id)
 		}
 	}

@@ -26,7 +26,7 @@ type GitTools interface {
 
 type Assistant interface {
 	Answer(context.Context, domain.ChatInput) (domain.Message, error)
-	Review(context.Context, domain.PullRequest, domain.Checks, domain.Team) ([]domain.Finding, error)
+	Review(context.Context, domain.PullRequest, domain.Checks, domain.Team) (domain.ReviewAnalysis, error)
 }
 
 type TeamLoader interface {

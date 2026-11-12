@@ -66,16 +66,27 @@ type Checks struct {
 	Label  string `json:"label"`
 }
 
+type ReviewAssessment struct {
+	Scope string `json:"scope"`
+	Task  string `json:"task"`
+}
+
+type ReviewAnalysis struct {
+	Findings   []Finding
+	Assessment ReviewAssessment
+}
+
 type ReviewRun struct {
-	ID        string    `json:"id"`
-	HeadSHA   string    `json:"head_sha"`
-	Mentor    Mentor    `json:"mentor"`
-	PR        PRInfo    `json:"pr"`
-	Findings  []Finding `json:"findings"`
-	Diff      string    `json:"diff,omitempty"`
-	Checks    Checks    `json:"checks"`
-	CreatedAt time.Time `json:"created_at"`
-	IsStale   bool      `json:"is_stale,omitempty"`
+	ID         string            `json:"id"`
+	HeadSHA    string            `json:"head_sha"`
+	Mentor     Mentor            `json:"mentor"`
+	PR         PRInfo            `json:"pr"`
+	Findings   []Finding         `json:"findings"`
+	Assessment *ReviewAssessment `json:"assessment,omitempty"`
+	Diff       string            `json:"diff,omitempty"`
+	Checks     Checks            `json:"checks"`
+	CreatedAt  time.Time         `json:"created_at"`
+	IsStale    bool              `json:"is_stale,omitempty"`
 }
 
 type ReviewRequest struct {

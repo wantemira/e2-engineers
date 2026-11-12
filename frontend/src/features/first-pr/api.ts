@@ -58,6 +58,7 @@ interface ReviewDto {
   mentor: Mentor;
   pr: ReviewRun["pr"];
   findings: Finding[];
+  assessment?: ReviewRun["assessment"];
   checks: ReviewRun["checks"];
   created_at: string;
   is_stale?: boolean;
@@ -270,6 +271,10 @@ function mapResult(
       !isIdentifier(review.pr.repository) ||
       !isIdentifier(review.pr.title) ||
       !Array.isArray(review.findings) ||
+      (review.assessment !== undefined &&
+        (!isRecord(review.assessment) ||
+          !isIdentifier(review.assessment.scope) ||
+          !isIdentifier(review.assessment.task))) ||
       !isRecord(review.checks) ||
       typeof review.checks.label !== "string" ||
       !["PASSED", "FAILED", "RUNNING", "UNKNOWN"].includes(
@@ -329,6 +334,7 @@ function mapResult(
             mentor: review.mentor,
             pr: review.pr,
             findings: review.findings,
+            assessment: review.assessment,
             checks: review.checks,
             createdAt: review.created_at,
             isStale: review.is_stale,

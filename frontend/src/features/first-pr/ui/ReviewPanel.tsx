@@ -119,6 +119,17 @@ export function ReviewPanel({
               </p>
             )}
 
+            {review.assessment && (
+              <div className={styles.assessment}>
+                <p>
+                  <strong>Соответствие задаче.</strong> {review.assessment.task}
+                </p>
+                <p>
+                  <strong>Что проверено.</strong> {review.assessment.scope}
+                </p>
+              </div>
+            )}
+
             {review.findings.length ? (
               <div className={styles.findings}>
                 {review.findings.map((finding) => (

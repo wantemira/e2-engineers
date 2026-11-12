@@ -13,6 +13,9 @@
   ],
   "rules": {
     "GO-ERR-01": { "id": "GO-ERR-01", "label": "Обработка ошибок", "url": "/api/v1/context/documents/review-rules#GO-ERR-01" },
-    "GO-TEST-01": { "id": "GO-TEST-01", "label": "Проверка изменённой логики", "url": "/api/v1/context/documents/review-rules#GO-TEST-01" }
+    "GO-TEST-01": { "id": "GO-TEST-01", "label": "Проверка изменённой логики", "url": "/api/v1/context/documents/review-rules#GO-TEST-01" },
+    "GO-FMT-01": { "id": "GO-FMT-01", "label": "Форматирование Go", "url": "/api/v1/context/documents/review-rules#GO-FMT-01" },
+    "GO-ERR-02": { "id": "GO-ERR-02", "label": "Возврат ошибки", "url": "/api/v1/context/documents/review-rules#GO-ERR-02" },
+    "GO-CTX-01": { "id": "GO-CTX-01", "label": "Отмена производного контекста", "url": "/api/v1/context/documents/review-rules#GO-CTX-01" }
   }
 }

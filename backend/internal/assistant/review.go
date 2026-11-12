@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"fmt"
+	"go/token"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,76 +12,140 @@ import (
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 )
 
-var errorBranch = regexp.MustCompile(`\bif\s+err\s*!=\s*nil\s*\{`)
-var returnedError = regexp.MustCompile(`\breturn\b.*(?:errors\.New|fmt\.Errorf)\(\s*"([^"\\]*(?:\\.[^"\\]*)*)"`)
+var errorBranch = regexp.MustCompile(`^if\s+err\s*!=\s*nil\s*\{`)
+var returnedError = regexp.MustCompile(`^return\s+(?:[^,;]+,\s*)?(errors\.New|fmt\.Errorf)\(\s*"([^"\\]*(?:\\.[^"\\]*)*)"`)
+var wrapVerb = regexp.MustCompile(`%(?:\[\d+\])?w`)
+var returnedNil = regexp.MustCompile(`^return(?:\s+[^,;]+,)?\s+nil\s*(?://.*)?$`)
 
-func (*LocalAssistant) Review(ctx context.Context, pr domain.PullRequest, _ domain.Checks, team domain.Team) ([]domain.Finding, error) {
+func (*LocalAssistant) Review(ctx context.Context, pr domain.PullRequest, _ domain.Checks, team domain.Team) (domain.ReviewAnalysis, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return domain.ReviewAnalysis{}, err
 	}
 	if len(pr.Diff) > 200*1024 {
-		return nil, domain.Problem("DIFF_TOO_LARGE", "Изменений слишком много для одной проверки.")
+		return domain.ReviewAnalysis{}, domain.Problem("DIFF_TOO_LARGE", "Изменений слишком много для одной проверки.")
 	}
 	lines, err := diff.Parse(pr.Diff)
 	if err != nil {
-		return nil, fmt.Errorf("parse PR diff: %w", err)
+		return domain.ReviewAnalysis{}, fmt.Errorf("parse PR diff: %w", err)
 	}
 	findings := make([]domain.Finding, 0)
+	add := func(kind, title, description, ruleID string, line diff.Line) {
+		finding := domain.Finding{
+			ID: fmt.Sprintf("F%d", len(findings)+1), Kind: kind, Title: title,
+			Description: description,
+			Location:    &domain.Location{Path: line.Path, Line: line.Number},
+		}
+		if rule, ok := team.Rules[ruleID]; ok {
+			finding.Rule = &rule
+		}
+		findings = append(findings, finding)
+	}
+
 	var goChange *diff.Line
-	hasTestChange := false
-	depth, branchDepth := 0, -1
-	var currentPath string
-	var currentHunk int
-	for index := range lines {
-		line := &lines[index]
-		if line.Path != currentPath || line.Hunk != currentHunk {
-			currentPath, depth, branchDepth = line.Path, 0, -1
-			currentHunk = line.Hunk
+	hasTestChange, visibleWrap, lostCause := false, false, false
+	goLines, parsedHunks := 0, 0
+	for start := 0; start < len(lines); {
+		end := start + 1
+		for end < len(lines) && lines[end].Hunk == lines[start].Hunk {
+			end++
 		}
-		if !strings.HasSuffix(line.Path, ".go") {
+		hunk := lines[start:end]
+		start = end
+		if err := ctx.Err(); err != nil {
+			return domain.ReviewAnalysis{}, err
+		}
+		if !strings.HasSuffix(hunk[0].Path, ".go") {
 			continue
 		}
-		text := strings.TrimSpace(line.Text)
-		isComment := strings.HasPrefix(text, "//") || strings.HasPrefix(text, "/*") || strings.HasPrefix(text, "*")
-		if line.Added && text != "" && !isComment {
-			if strings.HasSuffix(line.Path, "_test.go") {
-				hasTestChange = true
-			} else if goChange == nil {
-				goChange = line
+
+		isTest := strings.HasSuffix(hunk[0].Path, "_test.go")
+		type lineSyntax struct {
+			first  token.Token
+			braces []token.Token
+		}
+		syntax := make([]lineSyntax, len(hunk))
+		scanGoHunk(hunk, func(index int, tok token.Token, _ string) {
+			row := &syntax[index]
+			if row.first == token.ILLEGAL && tok != token.SEMICOLON {
+				row.first = tok
 			}
-		}
-		if isComment || strings.HasSuffix(line.Path, "_test.go") {
-			continue
-		}
-		if errorBranch.MatchString(text) {
-			branchDepth = depth
-		}
-		if line.Added && branchDepth >= 0 {
-			match := returnedError.FindStringSubmatch(text)
-			if match != nil {
-				format, unquoteErr := strconv.Unquote(`"` + match[1] + `"`)
-				if unquoteErr == nil && !strings.Contains(format, "%w") {
-					rule := team.Rules["GO-ERR-01"]
-					findings = append(findings, domain.Finding{
-						ID: fmt.Sprintf("F%d", len(findings)+1), Kind: "problem", Title: "Теряется причина ошибки",
-						Description: "В ветке err != nil возвращается новая ошибка без исходной причины. Вызывающий код потеряет возможность проверить её через errors.Is или errors.As. Добавьте контекст через fmt.Errorf(\"...: %w\", err), чтобы сохранить цепочку ошибок.",
-						Location:    &domain.Location{Path: line.Path, Line: line.Number}, Rule: &rule,
-					})
+			if tok == token.LBRACE || tok == token.RBRACE {
+				row.braces = append(row.braces, tok)
+			}
+		})
+		depth, branchDepth := 0, -1
+		for index := range hunk {
+			line := &hunk[index]
+			row := syntax[index]
+			if row.first == token.ILLEGAL {
+				continue
+			}
+			if line.Added {
+				goLines++
+				if isTest {
+					hasTestChange = true
+				} else if goChange == nil {
+					goChange = line
+				}
+			}
+			if isTest {
+				continue
+			}
+			text := strings.TrimSpace(line.Text)
+			if row.first == token.IF && branchDepth < 0 && errorBranch.MatchString(text) {
+				branchDepth = depth
+			}
+			if line.Added && row.first == token.RETURN && branchDepth >= 0 {
+				if match := returnedError.FindStringSubmatch(text); match != nil {
+					format, unquoteErr := strconv.Unquote(`"` + match[2] + `"`)
+					wraps := match[1] == "fmt.Errorf" && wrapVerb.MatchString(strings.ReplaceAll(format, "%%", ""))
+					visibleWrap = visibleWrap || (unquoteErr == nil && wraps)
+					if unquoteErr == nil && !wraps {
+						lostCause = true
+						add("problem", "Теряется причина ошибки",
+							"В ветке err != nil возвращается новая ошибка без исходной причины. Вызывающий код потеряет возможность проверить её через errors.Is или errors.As. Добавьте контекст через fmt.Errorf(\"...: %w\", err), чтобы сохранить цепочку ошибок.",
+							"GO-ERR-01", *line)
+					}
+				} else if returnedNil.MatchString(text) {
+					add("assumption", "Проверьте возврат nil при ошибке",
+						"В ветке err != nil возвращается nil. Если это позиция ошибки в результате, вызывающий код может принять сбой за успех. Верните исходную ошибку с контекстом или явно объясните, почему здесь допустим запасной результат.",
+						"GO-ERR-02", *line)
+				}
+			}
+			for _, brace := range row.braces {
+				if brace == token.LBRACE {
+					depth++
+					continue
+				}
+				depth = max(0, depth-1)
+				if depth <= branchDepth {
+					branchDepth = -1
 				}
 			}
 		}
-		depth += strings.Count(text, "{") - strings.Count(text, "}")
-		if depth <= branchDepth {
-			branchDepth = -1
+		if inspectGoHunk(hunk, add) {
+			parsedHunks++
 		}
 	}
+
 	if goChange != nil && !hasTestChange {
-		rule := team.Rules["GO-TEST-01"]
-		findings = append(findings, domain.Finding{
-			ID: fmt.Sprintf("F%d", len(findings)+1), Kind: "assumption", Title: "Проверьте тесты изменённой логики",
-			Description: "В доступном diff изменён Go-код, а изменений в файлах *_test.go не видно. Это не доказывает отсутствие тестов в репозитории. Проверьте существующие тесты и добавьте кейс для новой или изменённой ветки, если она ещё не покрыта.",
-			Location:    &domain.Location{Path: goChange.Path, Line: goChange.Number}, Rule: &rule,
-		})
+		add("assumption", "Проверьте тесты изменённой логики",
+			"В добавленных строках изменён Go-код. Добавленных строк в *_test.go не видно. Проверьте существующие тесты и добавьте кейс для изменённой ветки, если она ещё не покрыта.",
+			"GO-TEST-01", *goChange)
 	}
-	return findings, nil
+
+	scope := "В доступном diff нет добавленных непустых строк Go-кода для локальных проверок."
+	if goLines > 0 {
+		scope = fmt.Sprintf("Просмотрены добавленные строки Go-кода (%d без пустых строк и комментариев), видимые ветки обработки ошибок и изменения тестов.", goLines)
+		if parsedHunks == 0 {
+			scope += " Синтаксически полных Go-фрагментов для проверки gofmt и отмены контекста нет."
+		} else {
+			scope += fmt.Sprintf(" Для проверки gofmt и отмены контекста разобрано полных Go-фрагментов: %d.", parsedHunks)
+		}
+	}
+	scope += " Сборку и тесты PR агент не запускал."
+	return domain.ReviewAnalysis{
+		Findings:   findings,
+		Assessment: domain.ReviewAssessment{Scope: scope, Task: assessTask(pr.Task, lines, visibleWrap, lostCause, hasTestChange)},
+	}, nil
 }

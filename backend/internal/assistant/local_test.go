@@ -135,7 +135,7 @@ func TestLocalAssistantCancellation(t *testing.T) {
 }
 
 const testDiff = "diff --git a/service.go b/service.go\n--- a/service.go\n+++ b/service.go\n@@ -39,3 +39,3 @@\n if err != nil {\n- return err\n+ return errors.New(\"save failed\")\n }\n"
-const addedTest = "diff --git a/service_test.go b/service_test.go\n--- /dev/null\n+++ b/service_test.go\n@@ -0,0 +1,3 @@\n+func TestSave(t *testing.T) {\n+ t.Fatal(\"assert behavior\")\n+}\n"
+const addedTest = "diff --git a/service_test.go b/service_test.go\n--- /dev/null\n+++ b/service_test.go\n@@ -0,0 +1,3 @@\n+func TestSave(t *testing.T) {\n+\tt.Fatal(\"assert behavior\")\n+}\n"
 
 func TestLocalReviewDiff(t *testing.T) {
 	team := loadTestTeam(t)
@@ -155,7 +155,8 @@ func TestLocalReviewDiff(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			findings, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: test.diff}, domain.Checks{Status: "UNKNOWN"}, team)
+			analysis, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: test.diff}, domain.Checks{Status: "UNKNOWN"}, team)
+			findings := analysis.Findings
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +171,8 @@ func TestLocalReviewDiff(t *testing.T) {
 }
 
 func TestLocalReviewPreservesNewLineNumber(t *testing.T) {
-	findings, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: testDiff}, domain.Checks{}, loadTestTeam(t))
+	analysis, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: testDiff}, domain.Checks{}, loadTestTeam(t))
+	findings := analysis.Findings
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,8 @@ func TestLocalReviewPreservesNewLineNumber(t *testing.T) {
 
 func TestLocalReviewDoesNotCarryErrorBranchAcrossHunks(t *testing.T) {
 	diff := "diff --git a/service.go b/service.go\n--- a/service.go\n+++ b/service.go\n@@ -1,1 +1,1 @@\n if err != nil {\n@@ -30,1 +30,1 @@\n+ return errors.New(\"validation failed\")\n" + addedTest
-	findings, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: diff}, domain.Checks{}, loadTestTeam(t))
+	analysis, err := NewLocalAssistant().Review(context.Background(), domain.PullRequest{Diff: diff}, domain.Checks{}, loadTestTeam(t))
+	findings := analysis.Findings
 	if err != nil || len(findings) != 0 {
 		t.Fatalf("unrelated hunk must not inherit error branch: %+v, %v", findings, err)
 	}

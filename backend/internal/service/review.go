@@ -35,10 +35,11 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 		}
 		checks = domain.Checks{Status: "UNKNOWN", Label: "Нет данных о проверках"}
 	}
-	findings, err := service.assistant.Review(ctx, pr, checks, team)
+	analysis, err := service.assistant.Review(ctx, pr, checks, team)
 	if err != nil {
 		return domain.Result{}, err
 	}
+	findings := analysis.Findings
 	if findings == nil {
 		findings = []domain.Finding{}
 	}
@@ -47,13 +48,13 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 		return domain.Result{}, err
 	}
 	run := domain.ReviewRun{ID: "review_" + op.Operation.ID, HeadSHA: pr.HeadSHA, Mentor: team.Mentor, PR: pr.PRInfo,
-		Findings: findings, Diff: pr.Diff, Checks: checks, CreatedAt: time.Now().UTC(), IsStale: latest.HeadSHA != pr.HeadSHA}
+		Findings: findings, Assessment: &analysis.Assessment, Diff: pr.Diff, Checks: checks, CreatedAt: time.Now().UTC(), IsStale: latest.HeadSHA != pr.HeadSHA}
 	for i := range run.Findings {
 		if location := run.Findings[i].Location; location != nil && location.URL == "" {
 			location.URL = fmt.Sprintf("/api/v1/self-reviews/%s/diff#finding-%d", run.ID, i+1)
 		}
 	}
-	summary := "В проверенном diff замечаний не нашёл. Можно отправить PR наставнику."
+	summary := "По доступным проверкам замечаний нет. Оценка задачи и границы анализа указаны в отчёте."
 	if len(findings) > 0 {
 		summary = fmt.Sprintf("Проверил diff PR #%d по правилам команды. Замечаний: %d. Разберём их по одному — можно спросить про конкретный пункт.", number, len(findings))
 	}

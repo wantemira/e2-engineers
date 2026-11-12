@@ -31,6 +31,8 @@ test("от первого сообщения до квитанции и восс
   await expect(log.getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
   await send(page, "Проверь PR #17");
   await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
+  await expect(page.getByText(/заменяет исходную ошибку/)).toBeVisible();
+  await expect(page.getByText(/Сборку и тесты PR агент не запускал/)).toBeVisible();
 
   const finding = page.getByRole("link", { name: "internal/orders/service.go:38" });
   const diffHref = await finding.getAttribute("href");
@@ -68,8 +70,10 @@ test("от первого сообщения до квитанции и восс
 
     await page.getByRole("button", { name: "Проверить повторно" }).click();
     await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
+    await expect(page.getByText(/видно оборачивание/)).toBeVisible();
     await page.getByLabel("Версия отчёта").selectOption({ index: 1 });
     await expect(finding).toHaveAttribute("href", diffHref!);
+    await expect(page.getByText(/заменяет исходную ошибку/)).toBeVisible();
     const oldDiff = await context.request.get(new URL(diffHref!, page.url()).href);
     expect(await oldDiff.text()).toContain('a13d9c2');
     await page.getByRole("button", { name: "К текущему отчёту" }).click();

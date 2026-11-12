@@ -180,3 +180,11 @@
     padding-bottom: 4px;
   }
 }
+
+.assessment {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
