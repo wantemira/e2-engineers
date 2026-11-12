@@ -1,0 +1,39 @@
+name: ai-buddy
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      HTTP_ADDR: 0.0.0.0:8080
+      DATA_DIR: /data
+    volumes:
+      - state:/data
+      - ./teams:/app/teams:ro
+      - ./skills:/app/skills:ro
+      - ./mocks:/app/mocks:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "127.0.0.1:${BUDDY_PORT:-5173}:80"
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+volumes:
+  state:
