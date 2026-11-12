@@ -183,6 +183,7 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
           ))}
         </ul>
       )}
+      {message.mentorDraft && <MentorDraft text={message.mentorDraft} />}
       {message.receipt && (
         <div className={styles.receipt}>
           <p className={styles.receiptTitle}>
@@ -192,6 +193,37 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
           <p className={styles.receiptId}>ID запроса · {message.receipt.id}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function MentorDraft({ text }: { text: string }) {
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const [feedback, setFeedback] = useState("");
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setFeedback("Черновик скопирован");
+    } catch {
+      draftRef.current?.focus();
+      draftRef.current?.select();
+      setFeedback("Текст выделен. Скопируйте его вручную.");
+    }
+  }
+
+  return (
+    <div className={styles.mentorDraft}>
+      <label>
+        Черновик для наставника
+        <textarea ref={draftRef} rows={4} value={text} readOnly />
+      </label>
+      <Button variant="secondary" onClick={() => void copy()}>
+        Скопировать черновик
+      </Button>
+      <span className={styles.copyFeedback} role="status">
+        {feedback}
+      </span>
     </div>
   );
 }

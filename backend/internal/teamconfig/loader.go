@@ -3,6 +3,7 @@ package teamconfig
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,14 +18,15 @@ type configuredDocument struct {
 }
 
 type teamConfiguration struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Repository    string                 `json:"repository"`
-	RepositoryURL string                 `json:"repository_url"`
-	PRNumber      int                    `json:"pr_number"`
-	Mentor        domain.Mentor          `json:"mentor"`
-	Documents     []configuredDocument   `json:"documents"`
-	Rules         map[string]domain.Rule `json:"rules"`
+	PeopleAgentURL string                 `json:"people_agent_url"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Repository     string                 `json:"repository"`
+	RepositoryURL  string                 `json:"repository_url"`
+	PRNumber       int                    `json:"pr_number"`
+	Mentor         domain.Mentor          `json:"mentor"`
+	Documents      []configuredDocument   `json:"documents"`
+	Rules          map[string]domain.Rule `json:"rules"`
 }
 
 type Loader struct {
@@ -48,8 +50,15 @@ func (loader *Loader) Load() (domain.Team, error) {
 	if configuration.ID == "" || configuration.Name == "" || configuration.Repository == "" || configuration.RepositoryURL == "" || configuration.PRNumber < 1 || configuration.Mentor.ID == "" || configuration.Mentor.Name == "" {
 		return domain.Team{}, fmt.Errorf("team configuration has missing required fields")
 	}
+	if configuration.PeopleAgentURL != "" {
+		target, err := url.Parse(configuration.PeopleAgentURL)
+		if err != nil || (target.Scheme != "https" && target.Scheme != "http") || target.Hostname() == "" || target.User != nil {
+			return domain.Team{}, fmt.Errorf("people_agent_url must be an absolute HTTP(S) URL")
+		}
+	}
 	team := domain.Team{
-		ID: configuration.ID, Name: configuration.Name, Repository: configuration.Repository,
+		PeopleAgentURL: configuration.PeopleAgentURL,
+		ID:             configuration.ID, Name: configuration.Name, Repository: configuration.Repository,
 		PRNumber: configuration.PRNumber, Mentor: configuration.Mentor, Rules: configuration.Rules,
 		RepositoryURL: configuration.RepositoryURL,
 		Documents:     make([]domain.Document, 0, len(configuration.Documents)),

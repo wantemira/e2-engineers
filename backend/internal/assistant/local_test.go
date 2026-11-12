@@ -25,6 +25,7 @@ func loadTestTeam(t *testing.T) domain.Team {
 }
 func TestLocalAnswersUseTeamDocuments(t *testing.T) {
 	team := loadTestTeam(t)
+	team.PeopleAgentURL = ""
 	assistant := NewLocalAssistant()
 	tests := []struct {
 		name     string
@@ -57,6 +58,24 @@ func TestLocalAnswersUseTeamDocuments(t *testing.T) {
 	message, err := assistant.Answer(context.Background(), domain.ChatInput{Text: "Какой прогноз погоды?", Team: team})
 	if err != nil || !strings.Contains(message.Text, "Уточните рабочий вопрос") || len(message.Links) != 0 {
 		t.Fatalf("unsupported question must ask for context, got %+v, %v", message, err)
+	}
+}
+
+func TestPeopleAnswerUsesConfiguredAgentOrMentorDraft(t *testing.T) {
+	team := loadTestTeam(t)
+	assistant := NewLocalAssistant()
+	for _, target := range []string{"", "https://people.example.test/"} {
+		team.PeopleAgentURL = target
+		message, err := assistant.Answer(context.Background(), domain.ChatInput{Text: "Как оформить больничный?", Team: team})
+		if err != nil || len(message.Links) == 0 {
+			t.Fatalf("unexpected People answer: %+v, %v", message, err)
+		}
+		if target == "" && message.MentorDraft == "" {
+			t.Fatal("expected a copyable draft for a question to the mentor")
+		}
+		if target != "" && (message.Links[0].URL != target || message.MentorDraft != "") {
+			t.Fatalf("expected the configured People agent: %+v", message)
+		}
 	}
 }
 

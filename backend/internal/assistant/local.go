@@ -27,6 +27,25 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 		}
 		return explain(*finding), nil
 	}
+	if containsAny(text, "больнич", "болею", "заболел") {
+		message := documentAnswer(input.Team, "people-guide", "Больничный")
+		if input.Team.PeopleAgentURL != "" {
+			message.Text = "По порядку оформления больничного обратитесь к People-агенту."
+			message.Links = append([]domain.SourceLink{{Label: "Открыть People-агента", URL: input.Team.PeopleAgentURL}}, message.Links...)
+		} else {
+			message.MentorDraft = "Привет! Подскажи, пожалуйста, как оформить больничный и где найти актуальную инструкцию или контакт People-команды."
+		}
+		return message, nil
+	}
+	if containsAny(text, "доступ", "permission", "access") {
+		return documentAnswer(input.Team, "access-guide", "Доступ к инструменту"), nil
+	}
+	if containsAny(text, "наставник", "ментор", "buddy", "кому обратиться", "не получается", "не могу") {
+		message := reply(fmt.Sprintf("С этим вопросом может помочь ваш наставник — %s. Заполните поля в черновике перед отправкой.", input.Team.Mentor.Name))
+		message.Links = []domain.SourceLink{documentLink(input.Team, "context")}
+		message.MentorDraft = "Привет! Нужна помощь с [задача или ссылка на PR]. Ожидаю [результат], сейчас получаю [ошибка или фактический результат]. Уже проверил(а) [что пробовали]. Подскажешь следующий шаг?"
+		return message, nil
+	}
 	if containsAny(text, "почему", "объясни", "объяснит", "подробнее", "как исправить", "что значит", "что это значит") && input.CurrentReview != nil {
 		if finding := matchingFinding(text, input.CurrentReview); finding != nil {
 			return explain(*finding), nil
@@ -51,14 +70,6 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 	}
 
 	switch {
-	case containsAny(text, "больнич", "болею", "заболел"):
-		return documentAnswer(input.Team, "people-guide", "Больничный"), nil
-	case containsAny(text, "доступ", "permission", "access"):
-		return documentAnswer(input.Team, "access-guide", "Доступ к инструменту"), nil
-	case containsAny(text, "наставник", "ментор", "buddy", "кому обратиться", "не получается", "не могу"):
-		message := reply(fmt.Sprintf("Ваш наставник — %s. Если вопрос требует его участия, соберите ссылку на задачу или PR, ожидаемый результат, текст ошибки и то, что уже проверили. Могу помочь сформулировать обращение.", input.Team.Mentor.Name))
-		message.Links = []domain.SourceLink{documentLink(input.Team, "context")}
-		return message, nil
 	case containsAny(text, "%w", "обработк", "причин", "errors.is", "errors.as", "обернуть", "оборачива"):
 		return documentAnswer(input.Team, "review-rules", "GO-ERR-01"), nil
 	case containsAny(text, "тест", "test", "ci", "пайплайн", "сборк"):

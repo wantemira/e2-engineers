@@ -63,7 +63,8 @@ interface ReviewDto {
   is_stale?: boolean;
 }
 
-interface MessageDto extends Omit<ChatMessage, "receipt"> {
+interface MessageDto extends Omit<ChatMessage, "receipt" | "mentorDraft"> {
+  mentor_draft?: string;
   receipt?: ReviewRequestDto;
 }
 
@@ -231,6 +232,8 @@ function mapResult(
         !isIdentifier(message.id) ||
         typeof message.text !== "string" ||
         !["assistant", "user"].includes(message.role) ||
+        (message.mentor_draft !== undefined &&
+          !isIdentifier(message.mentor_draft)) ||
         (message.links !== undefined &&
           (!Array.isArray(message.links) ||
             message.links.some(
@@ -247,8 +250,9 @@ function mapResult(
       true,
     );
   }
-  const messages = (result.messages || []).map(({ receipt, ...message }) => ({
+  const messages = (result.messages || []).map(({ receipt, mentor_draft, ...message }) => ({
     ...message,
+    ...(mentor_draft ? { mentorDraft: mentor_draft } : {}),
     ...(receipt !== undefined ? { receipt: mapReceipt(receipt) } : {}),
   }));
   const review = result.review;

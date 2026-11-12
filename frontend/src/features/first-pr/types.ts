@@ -21,6 +21,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   links?: SourceLink[];
+  mentorDraft?: string;
   receipt?: ReviewRequest;
 }
 

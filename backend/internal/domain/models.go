@@ -16,11 +16,12 @@ type SourceLink struct {
 }
 
 type Message struct {
-	ID      string         `json:"id"`
-	Role    string         `json:"role"`
-	Text    string         `json:"text"`
-	Links   []SourceLink   `json:"links,omitempty"`
-	Receipt *ReviewRequest `json:"receipt,omitempty"`
+	ID          string         `json:"id"`
+	Role        string         `json:"role"`
+	Text        string         `json:"text"`
+	Links       []SourceLink   `json:"links,omitempty"`
+	MentorDraft string         `json:"mentor_draft,omitempty"`
+	Receipt     *ReviewRequest `json:"receipt,omitempty"`
 }
 
 type Location struct {
@@ -92,15 +93,16 @@ type Document struct {
 }
 
 type Team struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	Repository    string          `json:"repository"`
-	RepositoryURL string          `json:"repository_url"`
-	PRNumber      int             `json:"pr_number"`
-	Mentor        Mentor          `json:"mentor"`
-	Documents     []Document      `json:"documents"`
-	Rules         map[string]Rule `json:"rules"`
-	Skill         string          `json:"skill"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Repository     string          `json:"repository"`
+	RepositoryURL  string          `json:"repository_url"`
+	PRNumber       int             `json:"pr_number"`
+	Mentor         Mentor          `json:"mentor"`
+	Documents      []Document      `json:"documents"`
+	Rules          map[string]Rule `json:"rules"`
+	PeopleAgentURL string          `json:"people_agent_url,omitempty"`
+	Skill          string          `json:"skill"`
 }
 
 type ChatInput struct {
