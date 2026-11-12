@@ -13,6 +13,7 @@ import styles from "./ChatPanel.module.css";
 type ChatPanelProps = {
   messages: ChatMessage[];
   busy: BusyState | null;
+  loading: boolean;
   error: BuddyError | null;
   onSend: (text: string) => Promise<boolean>;
   onRetry: () => Promise<void>;
@@ -26,6 +27,7 @@ const busyLabels: Record<BusyState, string> = {
 
 export function ChatPanel({
   messages,
+  loading,
   busy,
   error,
   onSend,
@@ -39,7 +41,7 @@ export function ChatPanel({
   useEffect(() => {
     const list = listRef.current;
     if (list && shouldFollow.current) list.scrollTop = list.scrollHeight;
-  }, [messages, busy, error]);
+  }, [messages, loading, busy, error]);
 
   useEffect(() => {
     const input = inputRef.current;
@@ -51,7 +53,7 @@ export function ChatPanel({
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text || loading || busy) return;
     shouldFollow.current = true;
     const accepted = await onSend(text);
     if (accepted)
@@ -89,7 +91,13 @@ export function ChatPanel({
             list.scrollHeight - list.scrollTop - list.clientHeight < 64;
         }}
       >
-        {messages.length === 0 && (
+        {loading && (
+          <p className={styles.pending} role="status">
+            <span className={styles.pulse} aria-hidden="true" />
+            Загружаем историю…
+          </p>
+        )}
+        {!loading && !error && messages.length === 0 && (
           <div className={styles.assistant}>
             <span className={styles.author}>AI-Buddy</span>
             <p>
@@ -148,7 +156,7 @@ export function ChatPanel({
         </span>
         <Button
           type="submit"
-          disabled={!draft.trim() || Boolean(busy)}
+          disabled={!draft.trim() || loading || Boolean(busy)}
           aria-label="Отправить сообщение"
         >
           Отправить

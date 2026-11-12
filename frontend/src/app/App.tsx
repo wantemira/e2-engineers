@@ -65,6 +65,7 @@ export function App() {
         <div className={styles.workspace}>
           <ChatPanel
             messages={buddy.messages}
+            loading={buddy.loading}
             busy={busy}
             error={confirmationOpen ? null : buddy.error}
             onSend={buddy.sendMessage}
