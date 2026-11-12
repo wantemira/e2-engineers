@@ -19,7 +19,33 @@ npm run dev
 
 API слушает `127.0.0.1:8080`. Диалог, проверки и квитанции сохраняются в `.data/` для одной локальной инстанции. Сессия восстанавливается по cookie. Интеграция использует подготовленный PR и локальную квитанцию назначения ревью. Ключ модели для запуска не нужен.
 
-Проверка backend выполняется командой `go test ./...` из `backend`. Контракт HTTP описан в `frontend/README.md`.
+Новые отчёты сохраняют diff проверенной версии PR. Ссылка в замечании открывает нужную строку, даже если PR уже обновился. Чтобы получить такие ссылки для отчёта, сохранённого до этого изменения, запустите проверку повторно.
+
+Для кнопки «Открыть People-агента» укажите в `teams/demo-backend/context.json` поле `"people_agent_url": "https://people.example.test/"` со своим адресом. Если поле отсутствует, чат покажет ссылку на командную инструкцию и черновик вопроса наставнику.
+
+## Тесты и покрытие
+
+Из `frontend`:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run test:e2e
+npm run test:coverage
+```
+
+Браузерные тесты запускают Go API и Vite на портах 18080 и 4173 и используют временные данные. Сценарии проверяют путь от сообщения до квитанции, переход к строке diff, повторную проверку, восстановление истории и действия в чате. Для запуска в установленном Microsoft Edge задайте `BUDDY_BROWSER_CHANNEL=msedge` в окружении. Отчёт Playwright находится в `frontend/playwright-report/index.html`, объединённое покрытие Vitest и Playwright — в `frontend/coverage/index.html`. Порог по операторам фронтенда — строго больше 80%.
+
+Из `backend`:
+
+```powershell
+New-Item -ItemType Directory -Force coverage | Out-Null
+go test ./... "-coverpkg=./internal/..." "-coverprofile=coverage/coverage.out"
+go tool cover "-func=coverage/coverage.out"
+go tool cover "-html=coverage/coverage.out" "-o=coverage/index.html"
+```
+
+Отчёт Go показывает покрытие операторов всех прикладных пакетов в `internal/`. Браузерный сценарий отдельно проверяет запуск API из `cmd/api`. Контракт HTTP описан в `frontend/README.md`.
 
 ## Слои backend
 
