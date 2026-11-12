@@ -20,6 +20,7 @@ type sessionKey struct{}
 type application interface {
 	Session(string) (domain.Session, string, error)
 	Workspace(string) (domain.Workspace, error)
+	ReviewDiff(string, string) (domain.ReviewRun, error)
 	Document(string) (domain.Document, map[string]domain.Rule, error)
 	Submit(domain.Session, string, domain.Command) (string, error)
 	Operation(string, string) (domain.Operation, error)
@@ -36,6 +37,7 @@ func NewHTTPHandler(app application, gitHandler http.Handler, allowedOrigins []s
 	api.HandleFunc("GET /api/v1/workspace", handler.workspace)
 	api.HandleFunc("POST /api/v1/messages", handler.message)
 	api.HandleFunc("POST /api/v1/self-reviews", handler.selfReview)
+	api.HandleFunc("GET /api/v1/self-reviews/{id}/diff", handler.reviewDiff)
 	api.HandleFunc("POST /api/v1/review-requests", handler.reviewRequest)
 	api.HandleFunc("GET /api/v1/operations/{id}", handler.operation)
 	api.HandleFunc("POST /api/v1/operations/{id}/retry", handler.retry)

@@ -71,6 +71,7 @@ type ReviewRun struct {
 	Mentor    Mentor    `json:"mentor"`
 	PR        PRInfo    `json:"pr"`
 	Findings  []Finding `json:"findings"`
+	Diff      string    `json:"diff,omitempty"`
 	Checks    Checks    `json:"checks"`
 	CreatedAt time.Time `json:"created_at"`
 	IsStale   bool      `json:"is_stale,omitempty"`

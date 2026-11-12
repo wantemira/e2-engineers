@@ -48,7 +48,24 @@ func (service *Service) Session(token string) (domain.Session, string, error) {
 }
 
 func (service *Service) Workspace(owner string) (domain.Workspace, error) {
-	return service.repository.Workspace(owner)
+	workspace, err := service.repository.Workspace(owner)
+	for i := range workspace.Reviews {
+		workspace.Reviews[i].Diff = ""
+	}
+	return workspace, err
+}
+
+func (service *Service) ReviewDiff(owner, id string) (domain.ReviewRun, error) {
+	workspace, err := service.repository.Workspace(owner)
+	if err != nil {
+		return domain.ReviewRun{}, err
+	}
+	for _, run := range workspace.Reviews {
+		if run.ID == id && run.Diff != "" {
+			return run, nil
+		}
+	}
+	return domain.ReviewRun{}, domain.Problem("NOT_FOUND", "Diff проверки недоступен.")
 }
 
 func (service *Service) Document(id string) (domain.Document, map[string]domain.Rule, error) {
@@ -82,7 +99,15 @@ func (service *Service) Submit(owner domain.Session, key string, command domain.
 
 func (service *Service) Operation(owner, id string) (domain.Operation, error) {
 	job, err := service.repository.GetOperation(owner, id)
-	return job.Operation, err
+	operation := job.Operation
+	if operation.Result != nil && operation.Result.Review != nil {
+		result := *operation.Result
+		review := *result.Review
+		review.Diff = ""
+		result.Review = &review
+		operation.Result = &result
+	}
+	return operation, err
 }
 
 func (service *Service) Retry(owner, id, key string) error {
