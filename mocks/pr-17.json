@@ -1,0 +1,33 @@
+{
+  "current_revision": "initial",
+  "revisions": {
+    "initial": {
+      "pr": {
+        "number": 17,
+        "title": "Создание заказа и обработка ошибки хранилища",
+        "repository": "e2-engineers",
+        "url": "https://github.com/wantemira/e2-engineers/pull/17",
+        "owner_id": "intern-1",
+        "head_sha": "a13d9c2000000000000000000000000000000000",
+        "base_sha": "030c700000000000000000000000000000000000",
+        "task": "Добавить создание заказа. Сохранять причину ошибки хранилища для вызывающего кода и проверить ветку ошибки тестом.",
+        "diff": "diff --git a/internal/orders/service.go b/internal/orders/service.go\n--- a/internal/orders/service.go\n+++ b/internal/orders/service.go\n@@ -35,2 +35,7 @@\n func (service *Service) Create(ctx context.Context, input Input) (Order, error) {\n+    order, err := service.repository.Create(ctx, input)\n+    if err != nil {\n+        return Order{}, errors.New(\"create order failed\")\n+    }\n+    return order, nil\n }\n"
+      },
+      "checks": { "status": "UNKNOWN", "label": "Данных о CI пока нет" }
+    },
+    "fixed": {
+      "pr": {
+        "number": 17,
+        "title": "Создание заказа и обработка ошибки хранилища",
+        "repository": "e2-engineers",
+        "url": "https://github.com/wantemira/e2-engineers/pull/17",
+        "owner_id": "intern-1",
+        "head_sha": "c84be19000000000000000000000000000000000",
+        "base_sha": "030c700000000000000000000000000000000000",
+        "task": "Добавить создание заказа. Сохранять причину ошибки хранилища для вызывающего кода и проверить ветку ошибки тестом.",
+        "diff": "diff --git a/internal/orders/service.go b/internal/orders/service.go\n--- a/internal/orders/service.go\n+++ b/internal/orders/service.go\n@@ -35,2 +35,7 @@\n func (service *Service) Create(ctx context.Context, input Input) (Order, error) {\n+    order, err := service.repository.Create(ctx, input)\n+    if err != nil {\n+        return Order{}, fmt.Errorf(\"create order: %w\", err)\n+    }\n+    return order, nil\n }\ndiff --git a/internal/orders/service_test.go b/internal/orders/service_test.go\n--- /dev/null\n+++ b/internal/orders/service_test.go\n@@ -0,0 +1,9 @@\n+func TestCreateRepositoryError(t *testing.T) {\n+    expected := errors.New(\"storage unavailable\")\n+    repository := &fakeRepository{err: expected}\n+    service := &Service{repository: repository}\n+    _, actual := service.Create(context.Background(), Input{})\n+    if !errors.Is(actual, expected) {\n+        t.Fatalf(\"expected wrapped storage error, got %v\", actual)\n+    }\n+}\n"
+      },
+      "checks": { "status": "UNKNOWN", "label": "Данных о CI пока нет" }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "backend",
+  "name": "Backend",
+  "repository": "e2-engineers",
+  "repository_url": "https://github.com/wantemira/e2-engineers",
+  "pr_number": 17,
+  "mentor": { "id": "mentor-backend", "name": "Алексей, Backend" },
+  "documents": [
+    { "id": "context", "title": "Контекст Backend-команды", "file": "context.md" },
+    { "id": "review-rules", "title": "Правила разработки и ревью", "file": "review-rules.md" },
+    { "id": "access-guide", "title": "Доступ к рабочим инструментам", "file": "access-guide.md" },
+    { "id": "people-guide", "title": "Организационные вопросы", "file": "people-guide.md" }
+  ],
+  "rules": {
+    "GO-ERR-01": { "id": "GO-ERR-01", "label": "Обработка ошибок", "url": "/api/v1/context/documents/review-rules#GO-ERR-01" },
+    "GO-TEST-01": { "id": "GO-TEST-01", "label": "Проверка изменённой логики", "url": "/api/v1/context/documents/review-rules#GO-TEST-01" }
+  }
+}
