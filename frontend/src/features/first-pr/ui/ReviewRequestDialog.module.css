@@ -1,0 +1,29 @@
+.summary {
+  display: grid;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 15px;
+  line-height: 23px;
+  overflow-wrap: anywhere;
+}
+.commit {
+  color: var(--color-text);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 20px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.error {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  color: var(--color-error);
+  background: var(--color-error-surface);
+  font-size: 13px;
+  line-height: 20px;
+}

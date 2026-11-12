@@ -1,0 +1,44 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  transition: background-color 150ms;
+}
+.primary {
+  background: var(--color-blue);
+}
+.primary:hover:not(:disabled) {
+  background: var(--color-blue-hover);
+}
+.secondary {
+  background: var(--color-surface);
+}
+.secondary:hover:not(:disabled) {
+  background: #ebebeb;
+}
+.text {
+  min-height: 36px;
+  padding: 4px 0;
+  color: var(--color-link);
+  background: transparent;
+}
+.text:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.button:disabled {
+  color: #757575;
+  background: var(--color-surface);
+}
+@media (max-width: 760px) {
+  .button {
+    min-height: 44px;
+  }
+}

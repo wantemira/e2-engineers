@@ -1,0 +1,30 @@
+.dialog {
+  width: min(448px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  color: var(--color-text);
+  background: white;
+  overflow: auto;
+}
+.dialog::backdrop {
+  background: rgb(20 20 20 / 24%);
+}
+.title {
+  margin-bottom: 16px;
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 32px;
+  letter-spacing: -0.5px;
+}
+@media (max-width: 480px) {
+  .dialog {
+    padding: 20px;
+  }
+  .title {
+    font-size: 22px;
+    line-height: 28px;
+  }
+}
