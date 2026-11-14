@@ -31,11 +31,12 @@ try {
   writeFileSync(config, JSON.stringify(team));
 
   const binary = join(root, process.platform === "win32" ? "api.exe" : "api");
-  const build = await run("go", ["build", "-o", binary, "./cmd/api"], {
+  const demoBinary = join(root, process.platform === "win32" ? "demo.exe" : "demo");
+  const build = await run("go", ["build", "-o", root, "./cmd/api", "./cmd/demo"], {
     cwd: join(project, "backend"),
   });
   process.exitCode = build || await run(process.execPath, [cli, "test", ...process.argv.slice(2)], {
-    env: { ...process.env, BUDDY_E2E_ROOT: root, BUDDY_E2E_API: binary },
+    env: { ...process.env, BUDDY_E2E_ROOT: root, BUDDY_E2E_API: binary, BUDDY_E2E_DEMO: demoBinary },
   });
 } finally {
   rmSync(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 250 });

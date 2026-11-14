@@ -1,8 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { join } from "node:path";
 
 const root = process.env.BUDDY_E2E_ROOT!;
+const execute = promisify(execFile);
+
+async function configureDemo(...args: string[]) {
+  await execute(process.env.BUDDY_E2E_DEMO!, [
+    "-root", root, "-data", join(root, "data"), ...args,
+  ]);
+}
 
 async function send(page: Page, text: string) {
   const input = page.getByRole("textbox", { name: "Сообщение AI-Buddy" });
@@ -59,9 +68,8 @@ test("от первого сообщения до квитанции и восс
   await expect(dialog).toBeHidden();
   await expect(confirmButton).toBeFocused();
 
-  const fixture = join(root, "mocks", "pr-17.json");
-  const original = await readFile(fixture, "utf8");
-  await writeFile(fixture, JSON.stringify({ ...JSON.parse(original), current_revision: "fixed" }));
+  await configureDemo("-revision", "fixed");
+  await configureDemo("-checks", "PASSED");
   try {
     await confirmButton.click();
     await dialog.getByRole("button", { name: "Отправить", exact: true }).click();
@@ -71,6 +79,7 @@ test("от первого сообщения до квитанции и восс
     await page.getByRole("button", { name: "Проверить повторно" }).click();
     await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
     await expect(page.getByText(/видно оборачивание/)).toBeVisible();
+    await expect(page.getByText("CI · Тестовая проверка CI пройдена")).toBeVisible();
     await page.getByLabel("Версия отчёта").selectOption({ index: 1 });
     await expect(finding).toHaveAttribute("href", diffHref!);
     await expect(page.getByText(/заменяет исходную ошибку/)).toBeVisible();
@@ -107,7 +116,7 @@ test("от первого сообщения до квитанции и восс
     await saveCoverage(page, "restored");
     expect(errors).toEqual([]);
   } finally {
-    await writeFile(fixture, original);
+    await configureDemo("-reset");
   }
 });
 
@@ -152,4 +161,132 @@ test("действия в чате и повтор загрузки истори
   await expect(log.getByRole("alert")).toHaveCount(0);
   await expect(log.getByText(/PR №17/)).toBeVisible();
   await saveCoverage(page, "chat");
+});
+
+test("после перезагрузки уточняет исходную отправку без нового запроса ревью", async ({ page, context }) => {
+  const posts: { path: string; key?: string }[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") {
+      posts.push({
+        path: new URL(request.url()).pathname,
+        key: request.headers()["idempotency-key"],
+      });
+    }
+  });
+  await configureDemo("-reset");
+  await page.goto("/");
+  await expect(page.getByRole("log").getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+  await send(page, "Проверь PR #17");
+  await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
+  const fixture = join(root, "mocks", "pr-17.json");
+  const original = await readFile(fixture, "utf8");
+  try {
+    await writeFile(fixture, "{");
+    await page.getByRole("button", { name: "Отправить наставнику" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Отправить", exact: true }).click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Сервис ещё не подтвердил");
+    const workspace = await (await context.request.get("/api/v1/workspace")).json();
+    const pending = workspace.pending_operations[0];
+    expect(pending.state).toBe("RESULT_UNKNOWN");
+    expect(pending.key).toBe(posts.find((post) => post.path.endsWith("/review-requests"))!.key);
+    await page.reload();
+    await expect(page.getByRole("log").getByRole("alert")).toContainText("Сервис ещё не подтвердил");
+    await expect(page.getByText("Уточните результат исходного запроса")).toBeVisible();
+    expect(posts.filter((post) => post.path.endsWith("/review-requests"))).toHaveLength(1);
+    expect(posts.filter((post) => post.path.endsWith("/retry"))).toHaveLength(0);
+
+    await writeFile(fixture, original);
+    await page.getByRole("button", { name: "Уточнить результат", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("a13d9c2");
+    await page.getByRole("dialog").getByRole("button", { name: "Уточнить результат", exact: true }).click();
+    await expect(page.getByRole("log").getByText(/Запрос на ревью отправлен/)).toBeVisible();
+    expect(posts.filter((post) => post.path.endsWith("/review-requests"))).toHaveLength(1);
+    expect(posts.find((post) => post.path.endsWith("/retry"))).toEqual({
+      path: `/api/v1/operations/${pending.operation_id}/retry`,
+      key: pending.key,
+    });
+    const restored = await (await context.request.get("/api/v1/workspace")).json();
+    expect(restored.pending_operations).toEqual([]);
+    await saveCoverage(page, "unknown-restored");
+  } finally {
+    await writeFile(fixture, original);
+    await configureDemo("-reset");
+  }
+});
+
+test("продолжает опрос операции из workspace при открытии страницы", async ({ page, context }) => {
+  let release!: () => void;
+  let gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/v1/operations/*", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await page.goto("/");
+  await expect(page.getByRole("log").getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+  const accepted = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/v1/messages");
+  await send(page, "Привет");
+  const response = await accepted;
+  const submitted = {
+    id: (await response.json()).operation_id,
+    key: response.request().headers()["idempotency-key"],
+  };
+  const saved = await (await context.request.get("/api/v1/workspace")).json();
+  saved.pending_operations = [{
+    operation_id: submitted.id, key: submitted.key, state: "RUNNING",
+    command: { kind: "message", text: "Привет" },
+  }];
+  await page.route("**/api/v1/workspace", (route) => route.fulfill({ json: saved }));
+  let newMessages = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v1/messages") newMessages++;
+  });
+  try {
+    await page.reload();
+    await expect(page.getByRole("status").filter({ hasText: "AI-Buddy готовит ответ" })).toBeVisible();
+  } finally {
+    release();
+    gate = Promise.resolve();
+  }
+  await expect(page.getByRole("log").getByText(/PR №17/)).toBeVisible();
+  await expect(page.getByRole("log").getByText("Привет", { exact: true })).toHaveCount(1);
+  expect(newMessages).toBe(0);
+  await saveCoverage(page, "running-restored");
+});
+
+test("показывает учебное окружение, команды и CI нужной версии PR", async ({ page, context }) => {
+  await configureDemo("-reset");
+  const log = page.getByRole("log");
+  try {
+    await page.goto("/");
+    await expect(log.getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+    await send(page, "Где тестовое окружение?");
+    const initial = log.getByText(/Учебный сервис — orders-training/);
+    await expect(initial).toContainText("статус STOPPED");
+    await expect(initial).toContainText("Источник состояния окружения и CI — mock-инструменты");
+    await expect(initial).toContainText("make training-up");
+    await expect(initial).toContainText("make training-test");
+    await expect(initial).toContainText("a13d9c2");
+    const guide = log.getByRole("link", { name: "Учебный сервис и тестовое окружение" });
+    await expect(guide).toHaveAttribute("href", "/api/v1/context/documents/environment-guide");
+    const doc = await context.request.get("/api/v1/context/documents/environment-guide");
+    expect(doc.status()).toBe(200);
+    expect(await doc.text()).toContain("TestCreateRepositoryError");
+
+    await configureDemo("-environment", "READY");
+    await configureDemo("-revision", "fixed");
+    await configureDemo("-checks", "FAILED");
+    await send(page, "Покажи результат тестов");
+    const checked = log.getByText(/CI — FAILED/);
+    await expect(checked).toContainText("статус READY");
+    await expect(checked).toContainText("c84be19");
+    await expect(checked).toContainText("Разберите ошибку CI");
+    await page.reload();
+    await expect(log.getByText(/CI — FAILED/)).toBeVisible();
+    await expect(log.getByText(/статус STOPPED/)).toBeVisible();
+    await saveCoverage(page, "training");
+  } finally {
+    await configureDemo("-reset");
+  }
 });
