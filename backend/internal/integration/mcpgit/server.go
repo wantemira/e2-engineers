@@ -11,10 +11,12 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/wantemira/e2-engineers/backend/internal/demo"
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 	"github.com/wantemira/e2-engineers/backend/internal/storage/jsonfile"
 )
@@ -134,7 +136,18 @@ func (server *gitServer) revision() (gitRevision, error) {
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		return gitRevision{}, fmt.Errorf("decode PR fixture: %w", err)
 	}
-	revision, ok := fixture.Revisions[fixture.CurrentRevision]
+	controls, err := demo.Load(filepath.Dir(server.statePath))
+	if err != nil {
+		return gitRevision{}, err
+	}
+	selected := fixture.CurrentRevision
+	if controls.Revision != "" {
+		selected = controls.Revision
+	}
+	revision, ok := fixture.Revisions[selected]
+	if checks, overridden := controls.Checks[selected]; overridden {
+		revision.Checks = checks
+	}
 	if !ok || revision.PR.Number != 17 || revision.PR.Repository != "e2-engineers" || revision.PR.HeadSHA == "" || revision.PR.Diff == "" || revision.PR.OwnerID != "intern-1" {
 		return gitRevision{}, errors.New("invalid current PR fixture")
 	}

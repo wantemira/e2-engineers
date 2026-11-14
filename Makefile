@@ -1,8 +1,10 @@
 .DEFAULT_GOAL := help
 COMPOSE ?= docker compose
+DEMO = $(COMPOSE) run --build --rm --no-deps --entrypoint ai-buddy-demo backend
+CHECKS ?= UNKNOWN
 
 .NOTPARALLEL:
-.PHONY: help up build restart down reset ps logs config
+.PHONY: help up build restart down reset ps logs config demo-initial demo-fixed demo-ci
 
 define help_text
 make up       - build and start AI-Buddy
@@ -13,6 +15,9 @@ make build    - build service images
 make ps       - show service status
 make logs     - follow service logs
 make config   - validate Compose configuration
+make demo-initial - select the initial PR and keep history
+make demo-fixed   - select the corrected PR and keep history
+make demo-ci CHECKS=PASSED - set CI to UNKNOWN, RUNNING, FAILED or PASSED
 endef
 
 help:
@@ -33,6 +38,7 @@ down:
 
 reset:
 	$(COMPOSE) down --remove-orphans --volumes
+	$(DEMO) -root /app -reset
 	$(COMPOSE) up --build --remove-orphans --wait
 
 ps:
@@ -43,3 +49,12 @@ logs:
 
 config:
 	$(COMPOSE) config --quiet
+
+demo-initial:
+	$(DEMO) -root /app -revision initial
+
+demo-fixed:
+	$(DEMO) -root /app -revision fixed
+
+demo-ci:
+	$(DEMO) -root /app -checks "$(CHECKS)"

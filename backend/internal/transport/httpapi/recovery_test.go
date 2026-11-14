@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/wantemira/e2-engineers/backend/internal/assistant"
+	"github.com/wantemira/e2-engineers/backend/internal/demo"
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
@@ -127,5 +128,47 @@ func TestUnknownReviewRequestSurvivesRestartAndUsesOriginalAction(t *testing.T) 
 	}
 	if len(state.Actions) != 1 || len(state.Reviews) != 1 {
 		t.Fatalf("reconciliation duplicated the external action: %s", data)
+	}
+}
+
+func TestDemoControlsAreReadByRunningMCP(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	directory := t.TempDir()
+	gitHandler, err := mcpgit.NewGitHandler(filepath.Join(root, "mocks", "pr-17.json"), filepath.Join(directory, "git.json"), "test-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := httptest.NewServer(gitHandler)
+	defer api.Close()
+	git := mcpgit.NewMCPGit(api.URL, "test-secret")
+	ctx := context.Background()
+	if err := demo.Configure(root, directory, "", "", true); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := git.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := demo.Configure(root, directory, "fixed", "PASSED", false); err != nil {
+		t.Fatal(err)
+	}
+	fixed, err := git.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil || fixed.HeadSHA == initial.HeadSHA {
+		t.Fatalf("running MCP did not switch revision: %+v, %v", fixed, err)
+	}
+	checks, err := git.GetChecks(ctx, "intern-1", 17, fixed.HeadSHA)
+	if err != nil || checks.Status != "PASSED" {
+		t.Fatalf("MCP did not apply CI state: %+v, %v", checks, err)
+	}
+	if err := demo.Configure(root, directory, "", "", true); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := git.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil || restored.HeadSHA != initial.HeadSHA {
+		t.Fatalf("reset did not restore initial PR: %+v, %v", restored, err)
+	}
+	checks, err = git.GetChecks(ctx, "intern-1", 17, initial.HeadSHA)
+	if err != nil || checks.Status != "UNKNOWN" {
+		t.Fatalf("reset did not restore CI: %+v, %v", checks, err)
 	}
 }

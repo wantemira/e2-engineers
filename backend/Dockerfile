@@ -5,8 +5,10 @@ RUN go mod download
 COPY backend/cmd ./cmd
 COPY backend/internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -o /out/ai-buddy-api ./cmd/api
+RUN CGO_ENABLED=0 go build -trimpath -o /out/ai-buddy-demo ./cmd/demo
 
 FROM alpine:3.23
 WORKDIR /app
 COPY --from=build /out/ai-buddy-api /usr/local/bin/ai-buddy-api
+COPY --from=build /out/ai-buddy-demo /usr/local/bin/ai-buddy-demo
 ENTRYPOINT ["ai-buddy-api", "-root", "/app"]
