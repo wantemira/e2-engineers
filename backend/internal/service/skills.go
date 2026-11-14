@@ -56,6 +56,13 @@ func matchingMessageSkill(team domain.Team, text string) *domain.SkillDefinition
 	return nil
 }
 
+func skillSourceText(execution *domain.SkillExecution) string {
+	if execution.Source == "MOCK" {
+		return "\n\nИсточник — mock внутреннего скилла."
+	}
+	return "\n\nИсточник — внутренний скилл."
+}
+
 func (service *Service) skillMessage(ctx context.Context, actor string, skill domain.SkillDefinition, op domain.Job) (domain.Result, error) {
 	var output domain.MessageSkillOutput
 	execution, err := service.executeSkill(ctx, actor, skill, domain.MessageSkillInput{Text: op.Command.Text}, &output)
@@ -67,7 +74,7 @@ func (service *Service) skillMessage(ctx context.Context, actor string, skill do
 	}
 	return domain.Result{Messages: []domain.Message{
 		{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text},
-		{ID: "assistant_" + op.Operation.ID, Role: "assistant", Text: output.Text, Skill: execution},
+		{ID: "assistant_" + op.Operation.ID, Role: "assistant", Text: output.Text + skillSourceText(execution), Skill: execution},
 	}}, nil
 }
 

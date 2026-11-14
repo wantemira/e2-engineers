@@ -65,7 +65,7 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	if run.IsStale {
 		summary = "PR обновился во время проверки. Отчёт сохранён для предыдущей версии. Запустите проверку повторно."
 	}
-	summary += fmt.Sprintf("\n\nВнутренний скилл: %s@%s. Источник: %s.", execution.Target.ID, execution.Target.Version, execution.Source)
+	summary += skillSourceText(execution)
 	messages := []domain.Message{}
 	if op.Command.Kind == "message" {
 		messages = append(messages, domain.Message{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text})
