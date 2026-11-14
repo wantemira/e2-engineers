@@ -53,6 +53,78 @@ test("ошибка внутреннего скилла видна в чате и
   }
 });
 
+test("повтор после временного сбоя использует исходную операцию", async ({ page, context }) => {
+  const path = join(root, "mocks", "skills.json");
+  const original = await readFile(path, "utf8");
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") posts.push(new URL(request.url()).pathname);
+  });
+  try {
+    await page.goto("/");
+    await expect(page.getByRole("log").getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+    await writeFile(path, "{");
+    await send(page, "Проверь PR #17");
+    const alert = page.getByRole("log").getByRole("alert");
+    await expect(alert.getByRole("button", { name: "Повторить", exact: true })).toBeVisible();
+    await writeFile(path, original);
+    await alert.getByRole("button", { name: "Повторить", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
+    expect(posts.filter((path) => path.endsWith("/messages"))).toHaveLength(1);
+    expect(posts.filter((path) => path.endsWith("/retry"))).toHaveLength(1);
+    const workspace = await (await context.request.get("/api/v1/workspace")).json();
+    expect(workspace.messages.filter((message: { role: string }) => message.role === "user")).toHaveLength(1);
+    expect(workspace.reviews).toHaveLength(1);
+    await saveCoverage(page, "temporary-retry");
+  } finally {
+    await writeFile(path, original);
+  }
+});
+
+test("новая версия PR требует отдельной отправки, повтор той же версии сохраняет статус", async ({ page, context }) => {
+  await configureDemo("-reset");
+  const log = page.getByRole("log");
+  const sendReview = page.getByRole("button", { name: "Отправить наставнику" });
+  async function confirm() {
+    await sendReview.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Отправить", exact: true }).click();
+    await expect(page.getByText("Дождитесь обратной связи наставника")).toBeVisible();
+  }
+  try {
+    await page.goto("/");
+    await expect(log.getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+    await send(page, "Проверь PR #17");
+    await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
+    await confirm();
+    const initial = await (await context.request.get("/api/v1/workspace")).json();
+    const initialReceipt = initial.review_requests["e2-engineers#17"];
+    await configureDemo("-revision", "fixed");
+    await page.getByRole("button", { name: "Проверить повторно" }).click();
+    await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
+    await expect(sendReview).toBeVisible();
+    await expect(page.getByText("Дождитесь обратной связи наставника")).toHaveCount(0);
+    await page.reload();
+    await expect(sendReview).toBeVisible();
+    await confirm();
+    const fixed = await (await context.request.get("/api/v1/workspace")).json();
+    const fixedReceipt = fixed.review_requests["e2-engineers#17"];
+    expect(fixedReceipt.head_sha).toBe(fixed.reviews[0].head_sha);
+    expect(fixedReceipt.head_sha).not.toBe(initialReceipt.head_sha);
+    expect(fixedReceipt.id).not.toBe(initialReceipt.id);
+    await page.getByRole("button", { name: "Проверить повторно" }).click();
+    await expect(page.getByText("Дождитесь обратной связи наставника")).toBeVisible();
+    await expect(sendReview).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("Дождитесь обратной связи наставника")).toBeVisible();
+    const restored = await (await context.request.get("/api/v1/workspace")).json();
+    expect(restored.review_requests["e2-engineers#17"]).toEqual(fixedReceipt);
+    expect(restored.messages.filter((message: { receipt?: unknown }) => message.receipt)).toHaveLength(2);
+    await saveCoverage(page, "revision-request");
+  } finally {
+    await configureDemo("-reset");
+  }
+});
+
 test("от первого сообщения до квитанции и восстановления истории", async ({ page, context }) => {
   const log = page.getByRole("log");
   const confirmButton = page.getByRole("button", { name: "Отправить наставнику" });

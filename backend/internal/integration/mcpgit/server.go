@@ -221,8 +221,15 @@ func (server *gitServer) requestReview(ctx context.Context, actor string, input 
 	if revision.PR.HeadSHA != input.ExpectedHeadSHA {
 		return domain.ReviewRequest{}, domain.Problem("STALE_HEAD", "Версия PR изменилась.")
 	}
-	businessKey := fmt.Sprintf("%s:%d:%s", actor, input.Number, input.MentorID)
+	legacyKey := fmt.Sprintf("%s:%d:%s", actor, input.Number, input.MentorID)
+	businessKey := legacyKey + ":" + input.ExpectedHeadSHA
 	receipt, exists := server.state.Reviews[businessKey]
+	// Preserve same-revision deduplication for state written before SHA keys.
+	if !exists {
+		if previous, ok := server.state.Reviews[legacyKey]; ok && previous.HeadSHA == input.ExpectedHeadSHA {
+			receipt, exists = previous, true
+		}
+	}
 	if !exists {
 		var random [8]byte
 		if _, err := rand.Read(random[:]); err != nil {

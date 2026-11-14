@@ -11,7 +11,7 @@ type Repository interface {
 	SaveSession(tokenHash string, session domain.Session) error
 	Submit(job domain.Job, initialMessage *domain.Message) (string, error)
 	GetOperation(owner, id string) (domain.Job, error)
-	RequeueUnknown(owner, id string) error
+	RequeueOperation(owner, id string) error
 	RecoverOperations() error
 	ClaimNext() (domain.Job, bool, error)
 	Workspace(owner string) (domain.Workspace, error)

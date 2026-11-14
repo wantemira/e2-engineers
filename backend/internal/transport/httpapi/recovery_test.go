@@ -26,6 +26,63 @@ type loseFirstReviewReply struct {
 	lost atomic.Bool
 }
 
+type failFirstAnswer struct {
+	service.Assistant
+	failed atomic.Bool
+}
+
+func (assistant *failFirstAnswer) Answer(ctx context.Context, input domain.ChatInput) (domain.Message, error) {
+	if !assistant.failed.Swap(true) {
+		return domain.Message{}, &domain.AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "temporary failure", Retryable: true}
+	}
+	return assistant.Assistant.Answer(ctx, input)
+}
+
+func TestRetryTransientFailureKeepsOperationAndMessageIdentity(t *testing.T) {
+	store, err := repository.NewStore(filepath.Join(t.TempDir(), "application.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := service.NewService(store, nil, &failFirstAnswer{Assistant: assistant.NewLocalAssistant()}, teamconfig.New(filepath.Join("..", "..", "..", "..")), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	api := httptest.NewServer(httpapi.NewHTTPHandler(app, http.NotFoundHandler(), nil))
+	defer api.Close()
+	client := sessionClient(t)
+	id := submitForTest(t, client, api.URL, "/messages", "original-key", map[string]string{"text": "Привет"})
+	failed := waitForOperation(t, client, api.URL, id)
+	if failed.State != "FAILED" || failed.Error == nil || !failed.Error.Retryable {
+		t.Fatalf("unexpected failure: %+v", failed)
+	}
+	endpoint := api.URL + "/api/v1/operations/" + id + "/retry"
+	apiCall(t, sessionClient(t), "POST", endpoint, "original-key", struct{}{}, http.StatusNotFound, nil)
+	apiCall(t, client, "POST", endpoint, "wrong-key", struct{}{}, http.StatusConflict, nil)
+	apiCall(t, client, "POST", endpoint, "original-key", struct{}{}, http.StatusAccepted, nil)
+	retried := waitForOperation(t, client, api.URL, id)
+	if retried.State != "SUCCEEDED" || retried.Error != nil {
+		t.Fatalf("retry failed: %+v", retried)
+	}
+	// An exact retry after success must not execute the command a third time.
+	apiCall(t, client, "POST", endpoint, "original-key", struct{}{}, http.StatusAccepted, nil)
+	var workspace domain.Workspace
+	apiCall(t, client, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &workspace)
+	if len(workspace.Messages) != 2 || workspace.Messages[0].ID != "user_"+id || len(workspace.PendingOperations) != 0 {
+		t.Fatalf("retry duplicated messages: %+v", workspace)
+	}
+	invalid := submitForTest(t, client, api.URL, "/self-reviews", "invalid-pr", map[string]string{"pr_ref": "18"})
+	if result := waitForOperation(t, client, api.URL, invalid); result.State != "FAILED" || result.Error.Retryable {
+		t.Fatalf("expected permanent failure: %+v", result)
+	}
+	apiCall(t, client, "POST", api.URL+"/api/v1/operations/"+invalid+"/retry", "invalid-pr", struct{}{}, http.StatusConflict, nil)
+}
+
 func (git *loseFirstReviewReply) RequestReview(ctx context.Context, actor string, number int, sha string, mentor domain.Mentor, key string) (domain.ReviewRequest, error) {
 	receipt, err := git.GitTools.RequestReview(ctx, actor, number, sha, mentor, key)
 	if err == nil && !git.lost.Swap(true) {

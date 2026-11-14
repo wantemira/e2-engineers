@@ -19,6 +19,25 @@ function json(body: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("операции AI-Buddy", () => {
+  it("повторяет временно упавшую операцию с прежними ID и ключом", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "temporary-op" }, 202))
+      .mockResolvedValueOnce(json({ state: "FAILED", error: { code: "DEPENDENCY_UNAVAILABLE", retryable: true } }))
+      .mockResolvedValueOnce(json({ operation_id: "temporary-op" }, 202))
+      .mockResolvedValueOnce(json({ state: "SUCCEEDED", result: { messages: [] } }));
+    vi.stubGlobal("fetch", fetch);
+    const pending = { command: { kind: "review" as const, prRef: "17" }, key: "original-key" };
+    const signal = new AbortController().signal;
+    await expect(executeCommand(pending, signal)).rejects.toMatchObject({
+      operationId: "temporary-op", retryable: true, needsReconciliation: true,
+    });
+    await executeCommand({ ...pending, operationId: "temporary-op", needsReconciliation: true }, signal);
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/self-reviews", "/api/v1/operations/temporary-op",
+      "/api/v1/operations/temporary-op/retry", "/api/v1/operations/temporary-op",
+    ]);
+    expect(fetch.mock.calls[2][1].headers["Idempotency-Key"]).toBe("original-key");
+  });
   it.each([
     ["SKILL_UNAVAILABLE", "Внутренний скилл недоступен"],
     ["SKILL_INVALID_RESULT", "Не удалось проверить ответ внутреннего скилла"],

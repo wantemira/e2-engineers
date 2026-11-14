@@ -119,13 +119,8 @@ func (service *Service) Retry(owner, id, key string) error {
 	if key != job.Key {
 		return domain.Problem("IDEMPOTENCY_CONFLICT", "Для повтора нужен исходный ключ операции.")
 	}
-	if job.Operation.State == "FAILED" {
-		return domain.Problem("INVALID_STATE", "Операция завершилась ошибкой. Создайте новый запрос.")
-	}
-	if job.Operation.State == "RESULT_UNKNOWN" {
-		if err := service.repository.RequeueUnknown(owner, id); err != nil {
-			return err
-		}
+	if err := service.repository.RequeueOperation(owner, id); err != nil {
+		return err
 	}
 	service.signal()
 	return nil

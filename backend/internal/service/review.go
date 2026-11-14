@@ -90,6 +90,9 @@ func (service *Service) requestReview(ctx context.Context, actor string, team do
 	if err != nil {
 		return domain.Result{}, err
 	}
+	if receipt.Status != "REQUESTED" || receipt.ID == "" || receipt.PRNumber != run.PR.Number || receipt.HeadSHA != run.HeadSHA || receipt.Mentor.ID != team.Mentor.ID {
+		return domain.Result{}, &domain.AppError{Code: "DEPENDENCY_UNAVAILABLE", Message: "Git-сервис не подтвердил отправку проверенной версии PR. Уточните результат запроса.", Retryable: true}
+	}
 	return domain.Result{Messages: []domain.Message{{ID: "receipt_" + receipt.ID, Role: "assistant", Text: "", Receipt: &receipt}}, ReviewRequest: &receipt}, nil
 }
 

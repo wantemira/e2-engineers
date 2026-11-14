@@ -136,15 +136,19 @@ func (store *Store) GetOperation(owner, id string) (domain.Job, error) {
 	return job, nil
 }
 
-func (store *Store) RequeueUnknown(owner, id string) error {
+func (store *Store) RequeueOperation(owner, id string) error {
 	return store.update(func(state *diskState) error {
 		job, exists := state.Operations[id]
 		if !exists || job.Owner != owner {
 			return domain.Problem("NOT_FOUND", "Операция недоступна.")
 		}
-		if job.Operation.State == "RESULT_UNKNOWN" {
+		if job.Operation.State == "FAILED" && (job.Command.Kind == "request" || job.Operation.Error == nil || !job.Operation.Error.Retryable) {
+			return domain.Problem("INVALID_STATE", "Операция завершилась ошибкой. Создайте новый запрос.")
+		}
+		if job.Operation.State == "RESULT_UNKNOWN" || job.Operation.State == "FAILED" {
 			job.Operation.State = "QUEUED"
 			job.Operation.Error = nil
+			job.Operation.Result = nil
 			state.Operations[id] = job
 		}
 		return nil
@@ -220,7 +224,13 @@ func (store *Store) Workspace(owner string) (domain.Workspace, error) {
 		index := slices.IndexFunc(result.Reviews, func(run domain.ReviewRun) bool { return run.ID == job.Command.ReviewRunID })
 		if index >= 0 {
 			run := result.Reviews[index]
-			result.ReviewRequests[run.PR.Repository+"#"+strconv.Itoa(run.PR.Number)] = *job.Operation.Result.ReviewRequest
+			current := result.Reviews[slices.IndexFunc(result.Reviews, func(review domain.ReviewRun) bool {
+				return review.PR.Repository == run.PR.Repository && review.PR.Number == run.PR.Number
+			})]
+			receipt := *job.Operation.Result.ReviewRequest
+			if receipt.HeadSHA == current.HeadSHA && receipt.Mentor.ID == current.Mentor.ID && receipt.PRNumber == current.PR.Number {
+				result.ReviewRequests[run.PR.Repository+"#"+strconv.Itoa(run.PR.Number)] = receipt
+			}
 		}
 	}
 	slices.SortFunc(result.PendingOperations, func(a, b domain.PendingOperation) int {

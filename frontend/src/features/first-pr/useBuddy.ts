@@ -247,9 +247,16 @@ export function useBuddy() {
   const currentReview = reviews[0] ?? null;
   const selectedReview =
     reviews.find((review) => review.id === selectedId) ?? currentReview;
-  const latestRequest = currentReview
+  const savedRequest = currentReview
     ? (reviewRequests[prKey(currentReview)] ?? null)
     : null;
+  const latestRequest =
+    savedRequest && currentReview &&
+    savedRequest.headSha === currentReview.headSha &&
+    savedRequest.mentor.id === currentReview.mentor.id &&
+    savedRequest.prNumber === currentReview.pr.number
+      ? savedRequest
+      : null;
   const pendingRequest = currentReview
     ? unresolvedRequests.current.get(prKey(currentReview))
     : undefined;

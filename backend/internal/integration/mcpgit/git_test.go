@@ -220,9 +220,61 @@ func TestMCPReviewRequestIsDurableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	duplicate, err := client.RequestReview(ctx, "intern-1", 17, current.HeadSHA, mentor, "confirm-new-key")
-	if err != nil || duplicate.ID != receipt.ID {
-		t.Fatalf("business duplicate = %+v, error = %v", duplicate, err)
+	updated, err := client.RequestReview(ctx, "intern-1", 17, current.HeadSHA, mentor, "confirm-new-key")
+	if err != nil || updated.ID == receipt.ID || updated.HeadSHA != current.HeadSHA {
+		t.Fatalf("new revision receipt = %+v, error = %v", updated, err)
+	}
+	duplicate, err := client.RequestReview(ctx, "intern-1", 17, current.HeadSHA, mentor, "another-confirmation")
+	if err != nil || duplicate != updated {
+		t.Fatalf("same-revision duplicate = %+v, error = %v", duplicate, err)
+	}
+}
+
+func TestLegacyReviewReceiptIsReusedOnlyForItsSHA(t *testing.T) {
+	fixture, path := gitTestFiles(t)
+	server := startGitTestServer(t, fixture, path)
+	client := NewMCPGit(server.URL, "test-secret")
+	ctx := context.Background()
+	pr, err := client.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mentor := domain.Mentor{ID: "mentor-backend"}
+	receipt, err := client.RequestReview(ctx, "intern-1", 17, pr.HeadSHA, mentor, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state gitState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	state.Reviews = map[string]domain.ReviewRequest{"intern-1:17:mentor-backend": receipt}
+	data, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := startGitTestServer(t, fixture, path)
+	client = NewMCPGit(restarted.URL, "test-secret")
+	duplicate, err := client.RequestReview(ctx, "intern-1", 17, pr.HeadSHA, mentor, "legacy-retry")
+	if err != nil || duplicate != receipt {
+		t.Fatalf("legacy receipt lost: %+v, %v", duplicate, err)
+	}
+	useFixedRevision(t, fixture)
+	fixed, err := client.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := client.RequestReview(ctx, "intern-1", 17, fixed.HeadSHA, mentor, "fixed")
+	if err != nil || updated.HeadSHA != fixed.HeadSHA || updated.ID == receipt.ID {
+		t.Fatalf("legacy receipt leaked to new revision: %+v, %v", updated, err)
 	}
 }
 

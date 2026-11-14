@@ -581,7 +581,8 @@ export async function executeCommand(
             typeof operation.error?.code === "string"
               ? operation.error.code
               : "OPERATION_FAILED";
-          throw new BuddyApiError(errorMessage(code), code, false);
+          const retryable = operation.error?.retryable === true;
+          throw new BuddyApiError(errorMessage(code), code, retryable, operationId, retryable);
         }
         case "RESULT_UNKNOWN":
           throw new BuddyApiError(
