@@ -22,7 +22,7 @@ type ChatPanelProps = {
 const busyLabels: Record<BusyState, string> = {
   message: "AI-Buddy готовит ответ…",
   review: "Проверяем актуальную версию PR…",
-  request: "Отправляем запрос наставнику…",
+  request: "Проверяем статус запроса ревью…",
 };
 
 export function ChatPanel({

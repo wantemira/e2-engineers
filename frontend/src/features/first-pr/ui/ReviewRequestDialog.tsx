@@ -51,7 +51,9 @@ export function ReviewRequestDialog({
           disabled={busy || (!reconciling && review.isStale)}
         >
           {busy
-            ? "Отправляем…"
+            ? reconciling
+              ? "Уточняем…"
+              : "Отправляем…"
             : reconciling || error?.retryable
               ? "Уточнить результат"
               : "Отправить"}

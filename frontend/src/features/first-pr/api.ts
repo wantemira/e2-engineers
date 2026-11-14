@@ -83,6 +83,7 @@ export interface Workspace {
   messages: ChatMessage[];
   reviews: ReviewRun[];
   reviewRequests: Record<string, ReviewRequest>;
+  pendingOperations: PendingCommand[];
 }
 
 function errorMessage(code: string): string {
@@ -345,13 +346,83 @@ function mapResult(
   };
 }
 
+function mapPendingOperation(value: unknown): PendingCommand {
+  if (
+    !isRecord(value) ||
+    !isIdentifier(value.operation_id) ||
+    !isIdentifier(value.key) ||
+    typeof value.state !== "string" ||
+    !["QUEUED", "RUNNING", "RESULT_UNKNOWN"].includes(value.state) ||
+    !isRecord(value.command)
+  ) {
+    throw new BuddyApiError(
+      errorMessage("INVALID_RESPONSE"),
+      "INVALID_RESPONSE",
+      true,
+    );
+  }
+
+  const command = value.command;
+  let mapped: Command;
+  switch (command.kind) {
+    case "message":
+      if (!isIdentifier(command.text)) {
+        throw new BuddyApiError(
+          errorMessage("INVALID_RESPONSE"),
+          "INVALID_RESPONSE",
+          true,
+        );
+      }
+      mapped = { kind: "message", text: command.text };
+      break;
+    case "review":
+      if (!isIdentifier(command.pr_ref)) {
+        throw new BuddyApiError(
+          errorMessage("INVALID_RESPONSE"),
+          "INVALID_RESPONSE",
+          true,
+        );
+      }
+      mapped = { kind: "review", prRef: command.pr_ref };
+      break;
+    case "request":
+      if (
+        !isIdentifier(command.review_run_id) ||
+        !isIdentifier(command.expected_mentor_id)
+      ) {
+        throw new BuddyApiError(
+          errorMessage("INVALID_RESPONSE"),
+          "INVALID_RESPONSE",
+          true,
+        );
+      }
+      mapped = {
+        kind: "request",
+        reviewRunId: command.review_run_id,
+        mentorId: command.expected_mentor_id,
+      };
+      break;
+    default:
+      throw new BuddyApiError(
+        errorMessage("INVALID_RESPONSE"),
+        "INVALID_RESPONSE",
+        true,
+      );
+  }
+
+  // Hydration only reads the original operation. Reconciliation needs an explicit action.
+  return { command: mapped, operationId: value.operation_id, key: value.key };
+}
+
 export async function loadWorkspace(signal: AbortSignal): Promise<Workspace> {
   const data = await jsonRequest<Record<string, unknown>>("/workspace", signal);
 
   if (
     !Array.isArray(data.messages) ||
     !Array.isArray(data.reviews) ||
-    !isRecord(data.review_requests)
+    !isRecord(data.review_requests) ||
+    (data.pending_operations !== undefined &&
+      !Array.isArray(data.pending_operations))
   ) {
     throw new BuddyApiError(
       "Не удалось загрузить историю. Попробуйте ещё раз.",
@@ -387,7 +458,24 @@ export async function loadWorkspace(signal: AbortSignal): Promise<Workspace> {
     }),
   );
 
-  return { messages, reviews, reviewRequests };
+  const pendingOperations = (
+    (data.pending_operations || []) as unknown[]
+  ).map(mapPendingOperation);
+  for (const pending of pendingOperations) {
+    const command = pending.command;
+    if (
+      command.kind === "request" &&
+      !reviews.some((review) => review.id === command.reviewRunId)
+    ) {
+      throw new BuddyApiError(
+        errorMessage("INVALID_RESPONSE"),
+        "INVALID_RESPONSE",
+        true,
+      );
+    }
+  }
+
+  return { messages, reviews, reviewRequests, pendingOperations };
 }
 
 function pause(signal: AbortSignal): Promise<void> {

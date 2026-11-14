@@ -10,6 +10,7 @@ type ReviewPanelProps = {
   reviews: ReviewRun[];
   busy: BusyState | null;
   requested: boolean;
+  reconciling: boolean;
   onSelectReview: (id: string) => void;
   onRecheck: () => Promise<void>;
   onRequest: () => void;
@@ -21,6 +22,7 @@ export function ReviewPanel({
   reviews,
   busy,
   requested,
+  reconciling,
   onSelectReview,
   onRecheck,
   onRequest,
@@ -45,15 +47,16 @@ export function ReviewPanel({
       {busy === "review" ? "Проверяем…" : "Проверить повторно"}
     </Button>
   );
-  const requestButton = !requested && !review?.isStale && (
-    <Button
-      variant={review?.findings.length ? "secondary" : "primary"}
-      onClick={onRequest}
-      disabled={disabled}
-    >
-      Отправить наставнику
-    </Button>
-  );
+  const requestButton =
+    !requested && (reconciling || !review?.isStale) && (
+      <Button
+        variant={review?.findings.length ? "secondary" : "primary"}
+        onClick={onRequest}
+        disabled={disabled}
+      >
+        {reconciling ? "Уточнить результат" : "Отправить наставнику"}
+      </Button>
+    );
 
   return (
     <section

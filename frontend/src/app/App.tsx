@@ -15,6 +15,9 @@ export function App() {
   if (latestRequest) {
     stage = "Запрос ревью отправлен";
     nextStep = "Дождитесь обратной связи наставника";
+  } else if (buddy.isReconcilingRequest) {
+    stage = "Ожидаем подтверждения отправки";
+    nextStep = "Уточните результат исходного запроса";
   } else if (busy === "review") {
     stage = "PR в работе";
     nextStep = "Проверяем актуальную версию PR";
@@ -77,6 +80,7 @@ export function App() {
             reviews={buddy.reviews}
             busy={busy}
             requested={Boolean(latestRequest)}
+            reconciling={buddy.isReconcilingRequest}
             onSelectReview={buddy.selectReview}
             onRecheck={buddy.recheck}
             onRequest={() => {

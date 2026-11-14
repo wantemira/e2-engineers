@@ -45,53 +45,6 @@ export function useBuddy() {
   const reviewedPr = useRef<string | null>(null);
   const mounted = useRef(true);
 
-  const initialize = useCallback(() => {
-    hydrationController.current?.abort();
-    const active = new AbortController();
-    hydrationController.current = active;
-    setLoading(true);
-    setError(null);
-
-    const request = (async () => {
-      try {
-        const workspace = await loadWorkspace(active.signal);
-        if (active.signal.aborted || !mounted.current) return false;
-
-        setMessages(workspace.messages);
-        setReviews(workspace.reviews);
-        setReviewRequests(workspace.reviewRequests);
-        setSelectedId(workspace.reviews[0]?.id ?? null);
-        reviewedPr.current = workspace.reviews[0]
-          ? prKey(workspace.reviews[0])
-          : null;
-        return true;
-      } catch (failure) {
-        if (active.signal.aborted || !mounted.current) return false;
-        setError({
-          message:
-            "Не удалось загрузить историю. Проверьте подключение и повторите запрос.",
-          retryable: !(failure instanceof BuddyApiError) || failure.retryable,
-        });
-        return false;
-      } finally {
-        if (!active.signal.aborted && mounted.current) setLoading(false);
-      }
-    })();
-
-    ready.current = request;
-    return request;
-  }, []);
-
-  useEffect(() => {
-    mounted.current = true;
-    void initialize();
-    return () => {
-      mounted.current = false;
-      hydrationController.current?.abort();
-      controller.current?.abort();
-    };
-  }, [initialize]);
-
   const applyResult = useCallback(
     (result: OperationResult, pending: ActiveCommand) => {
       setMessages((previous) => {
@@ -158,7 +111,7 @@ export function useBuddy() {
 
       try {
         const result = await executeCommand(pending, active.signal);
-        if (!mounted.current) return false;
+        if (active.signal.aborted || !mounted.current) return false;
         applyResult(result, pending);
         retryCommand.current = null;
         if (pending.command.kind === "request" && pending.reviewSnapshot) {
@@ -204,12 +157,74 @@ export function useBuddy() {
         }
         return false;
       } finally {
-        controller.current = null;
-        if (mounted.current) setBusy(null);
+        if (controller.current === active) {
+          controller.current = null;
+          if (mounted.current) setBusy(null);
+        }
       }
     },
     [applyResult],
   );
+
+  const initialize = useCallback(() => {
+    hydrationController.current?.abort();
+    const active = new AbortController();
+    hydrationController.current = active;
+    setLoading(true);
+    setError(null);
+
+    const request = (async () => {
+      try {
+        const workspace = await loadWorkspace(active.signal);
+        if (active.signal.aborted || !mounted.current) return false;
+
+        setMessages(workspace.messages);
+        setReviews(workspace.reviews);
+        setReviewRequests(workspace.reviewRequests);
+        setSelectedId(workspace.reviews[0]?.id ?? null);
+        reviewedPr.current = workspace.reviews[0]
+          ? prKey(workspace.reviews[0])
+          : null;
+        // Show the restored history while resuming the original operation IDs.
+        setLoading(false);
+        for (const pending of workspace.pendingOperations) {
+          if (active.signal.aborted || !mounted.current) return false;
+          const command = pending.command;
+          const reviewSnapshot =
+            command.kind === "request"
+              ? workspace.reviews.find(
+                  (review) => review.id === command.reviewRunId,
+                )
+              : undefined;
+          await run({ ...pending, reviewSnapshot });
+        }
+        return !active.signal.aborted && mounted.current;
+      } catch (failure) {
+        if (active.signal.aborted || !mounted.current) return false;
+        setError({
+          message:
+            "Не удалось загрузить историю. Проверьте подключение и повторите запрос.",
+          retryable: !(failure instanceof BuddyApiError) || failure.retryable,
+        });
+        return false;
+      } finally {
+        if (!active.signal.aborted && mounted.current) setLoading(false);
+      }
+    })();
+
+    ready.current = request;
+    return request;
+  }, [run]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void initialize();
+    return () => {
+      mounted.current = false;
+      hydrationController.current?.abort();
+      controller.current?.abort();
+    };
+  }, [initialize]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -242,15 +257,15 @@ export function useBuddy() {
   const isReconcilingRequest = pendingRequest !== undefined;
 
   const recheck = useCallback(async () => {
-    if (!currentReview) return;
+    if (!currentReview || loading) return;
     await run({
       command: { kind: "review", prRef: currentReview.pr.url },
       key: crypto.randomUUID(),
     });
-  }, [currentReview, run]);
+  }, [currentReview, loading, run]);
 
   const requestReview = useCallback(async (): Promise<boolean> => {
-    if (!currentReview || latestRequest) return false;
+    if (!currentReview || loading || latestRequest) return false;
     const unresolved = unresolvedRequests.current.get(prKey(currentReview));
     if (unresolved) {
       return run(unresolved.command);
@@ -265,7 +280,7 @@ export function useBuddy() {
       key: crypto.randomUUID(),
       reviewSnapshot: currentReview,
     });
-  }, [currentReview, latestRequest, run]);
+  }, [currentReview, loading, latestRequest, run]);
 
   const retry = useCallback(async () => {
     if (retryCommand.current) await run(retryCommand.current);

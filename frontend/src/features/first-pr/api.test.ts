@@ -34,6 +34,7 @@ describe("операции AI-Buddy", () => {
     expect(workspace).toEqual({
       messages: [],
       reviews: [],
+      pendingOperations: [],
       reviewRequests: {
         "backend#17": {
           id: receipt.id,
@@ -46,6 +47,71 @@ describe("операции AI-Buddy", () => {
     });
     expect(fetch.mock.calls[0][0]).toBe("/api/v1/workspace");
     expect(fetch.mock.calls[0][1].credentials).toBe("include");
+  });
+
+  it("продолжает сохранённую операцию чтением исходного ID", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({
+        messages: [], reviews: [], review_requests: {},
+        pending_operations: [{
+          operation_id: "saved-operation", key: "original-key", state: "RUNNING",
+          command: { kind: "message", text: "Проверь PR #17" },
+        }],
+      }))
+      .mockResolvedValueOnce(json({ state: "SUCCEEDED", result: { messages: [] } }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const workspace = await loadWorkspace(signal);
+    await executeCommand(workspace.pendingOperations[0], signal);
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/workspace", "/api/v1/operations/saved-operation",
+    ]);
+    expect(fetch.mock.calls.every(([, options]) => options.method === "GET")).toBe(true);
+  });
+
+  it("восстанавливает неизвестную отправку и уточняет её только после действия пользователя", async () => {
+    const review = {
+      id: "saved-review", head_sha: receipt.head_sha, mentor: receipt.mentor,
+      pr: { number: 17, repository: "backend", title: "PR", url: "https://example.test/pull/17" },
+      findings: [], checks: { status: "UNKNOWN", label: "Нет данных" },
+      created_at: "2026-11-12T10:00:00Z",
+    };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({
+        messages: [], reviews: [review], review_requests: {},
+        pending_operations: [{
+          operation_id: "saved-request", key: "original-confirmation", state: "RESULT_UNKNOWN",
+          command: { kind: "request", review_run_id: review.id, expected_mentor_id: receipt.mentor.id },
+        }],
+      }))
+      .mockResolvedValueOnce(json({ state: "RESULT_UNKNOWN" }))
+      .mockResolvedValueOnce(json({ operation_id: "saved-request" }, 202))
+      .mockResolvedValueOnce(json({ state: "SUCCEEDED", result: { messages: [], review_request: receipt } }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const { pendingOperations } = await loadWorkspace(signal);
+    const pending = pendingOperations[0];
+    await expect(executeCommand(pending, signal)).rejects.toMatchObject({
+      operationId: "saved-request", needsReconciliation: true,
+    });
+    expect(fetch.mock.calls).toHaveLength(2);
+    await executeCommand({ ...pending, needsReconciliation: true }, signal);
+    expect(fetch.mock.calls[2][0]).toBe("/api/v1/operations/saved-request/retry");
+    expect(fetch.mock.calls[2][1].headers["Idempotency-Key"]).toBe("original-confirmation");
+    expect(fetch.mock.calls.filter(([, options]) => options.method === "POST")).toHaveLength(1);
+  });
+
+  it("отклоняет незавершённую отправку без сохранённой проверки", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json({
+      messages: [], reviews: [], review_requests: {},
+      pending_operations: [{
+        operation_id: "request", key: "key", state: "RESULT_UNKNOWN",
+        command: { kind: "request", review_run_id: "missing", expected_mentor_id: "mentor" },
+      }],
+    })));
+    await expect(loadWorkspace(new AbortController().signal)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
   });
 
   it("не передаёт повреждённую сохранённую историю в React", async () => {
