@@ -2,9 +2,10 @@
 COMPOSE ?= docker compose
 DEMO = $(COMPOSE) run --build --rm --no-deps --entrypoint ai-buddy-demo backend
 CHECKS ?= UNKNOWN
+ENVIRONMENT ?= STOPPED
 
 .NOTPARALLEL:
-.PHONY: help up build restart down reset ps logs config demo-initial demo-fixed demo-ci
+.PHONY: help up build restart down reset ps logs config demo-initial demo-fixed demo-ci demo-environment training-up training-down training-test training-solution-test
 
 define help_text
 make up       - build and start AI-Buddy
@@ -18,6 +19,11 @@ make config   - validate Compose configuration
 make demo-initial - select the initial PR and keep history
 make demo-fixed   - select the corrected PR and keep history
 make demo-ci CHECKS=PASSED - set CI to UNKNOWN, RUNNING, FAILED or PASSED
+make demo-environment ENVIRONMENT=READY - set mock training status
+make training-up - start the orders training service on port 8081
+make training-down - stop the orders training service
+make training-test - test the exercise (fails until the error cause is preserved)
+make training-solution-test - test the prepared solution
 endef
 
 help:
@@ -58,3 +64,20 @@ demo-fixed:
 
 demo-ci:
 	$(DEMO) -root /app -checks "$(CHECKS)"
+
+demo-environment:
+	$(DEMO) -root /app -environment "$(ENVIRONMENT)"
+
+training-up:
+	$(COMPOSE) up --build --wait training
+	$(DEMO) -root /app -environment READY
+
+training-down:
+	$(COMPOSE) stop training
+	$(DEMO) -root /app -environment STOPPED
+
+training-test:
+	$(COMPOSE) run --build --rm --no-deps training-tests
+
+training-solution-test:
+	$(COMPOSE) run --build --rm --no-deps training-tests go test -tags solution ./...

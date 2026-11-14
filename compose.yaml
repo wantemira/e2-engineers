@@ -35,5 +35,25 @@ services:
       timeout: 2s
       retries: 15
 
+  training:
+    profiles: [training]
+    build:
+      context: ./training/orders
+      target: runtime
+    ports:
+      - "127.0.0.1:${BUDDY_TRAINING_PORT:-8081}:8081"
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8081/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  training-tests:
+    profiles: [training]
+    build:
+      context: ./training/orders
+      target: tests
+    network_mode: none
+
 volumes:
   state:
