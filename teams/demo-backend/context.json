@@ -1,6 +1,8 @@
 {
   "id": "backend",
   "name": "Backend",
+  "skills": ["pr-self-review"],
+  "capabilities": { "pr_review": "pr-self-review" },
   "repository": "e2-engineers",
   "repository_url": "https://github.com/wantemira/e2-engineers",
   "pr_number": 17,

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/skillcatalog"
 )
 
 type configuredDocument struct {
@@ -18,6 +19,8 @@ type configuredDocument struct {
 }
 
 type teamConfiguration struct {
+	Skills         []string                `json:"skills"`
+	Capabilities   map[string]string       `json:"capabilities"`
 	Training       *domain.TrainingContext `json:"training"`
 	PeopleAgentURL string                  `json:"people_agent_url"`
 	ID             string                  `json:"id"`
@@ -100,13 +103,37 @@ func (loader *Loader) Load() (domain.Team, error) {
 			return domain.Team{}, fmt.Errorf("invalid team rule %s", id)
 		}
 	}
-	skill, err := os.ReadFile(filepath.Join(loader.projectRoot, "skills", "pr-self-review", "SKILL.md"))
-	if err != nil {
-		return domain.Team{}, fmt.Errorf("read self-review skill: %w", err)
+	team.Capabilities = configuration.Capabilities
+	enabled := make(map[string]domain.SkillDefinition)
+	var triggers []string
+	for _, id := range configuration.Skills {
+		if _, duplicate := enabled[id]; duplicate {
+			return domain.Team{}, fmt.Errorf("duplicate skill %s", id)
+		}
+		skill, err := skillcatalog.Load(loader.projectRoot, id)
+		if err != nil {
+			return domain.Team{}, err
+		}
+		for _, trigger := range skill.Triggers {
+			for _, previous := range triggers {
+				if strings.Contains(trigger, previous) || strings.Contains(previous, trigger) {
+					return domain.Team{}, fmt.Errorf("ambiguous skill trigger %q", trigger)
+				}
+			}
+			triggers = append(triggers, trigger)
+		}
+		enabled[id] = skill
+		team.Skills = append(team.Skills, skill)
 	}
-	if strings.TrimSpace(string(skill)) == "" {
-		return domain.Team{}, fmt.Errorf("self-review skill is empty")
+	for capability, id := range team.Capabilities {
+		if _, ok := enabled[id]; !ok || capability == "" {
+			return domain.Team{}, fmt.Errorf("capability %s refers to a disabled skill %s", capability, id)
+		}
 	}
-	team.Skill = string(skill)
+	review, ok := enabled[team.Capabilities["pr_review"]]
+	if !ok || review.Contract != domain.ReviewSkillContract {
+		return domain.Team{}, fmt.Errorf("pr_review requires an enabled %s skill", domain.ReviewSkillContract)
+	}
+	team.Skill = review.Instructions // Compatibility until callers use the catalog directly.
 	return team, nil
 }

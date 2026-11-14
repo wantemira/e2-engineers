@@ -72,8 +72,8 @@ type ReviewAssessment struct {
 }
 
 type ReviewAnalysis struct {
-	Findings   []Finding
-	Assessment ReviewAssessment
+	Findings   []Finding        `json:"findings"`
+	Assessment ReviewAssessment `json:"assessment"`
 }
 
 type ReviewRun struct {
@@ -121,17 +121,19 @@ type TrainingEnvironment struct {
 }
 
 type Team struct {
-	ID             string           `json:"id"`
-	Name           string           `json:"name"`
-	Repository     string           `json:"repository"`
-	RepositoryURL  string           `json:"repository_url"`
-	PRNumber       int              `json:"pr_number"`
-	Mentor         Mentor           `json:"mentor"`
-	Documents      []Document       `json:"documents"`
-	Rules          map[string]Rule  `json:"rules"`
-	PeopleAgentURL string           `json:"people_agent_url,omitempty"`
-	Skill          string           `json:"skill"`
-	Training       *TrainingContext `json:"training,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Repository     string            `json:"repository"`
+	RepositoryURL  string            `json:"repository_url"`
+	PRNumber       int               `json:"pr_number"`
+	Mentor         Mentor            `json:"mentor"`
+	Documents      []Document        `json:"documents"`
+	Rules          map[string]Rule   `json:"rules"`
+	PeopleAgentURL string            `json:"people_agent_url,omitempty"`
+	Skill          string            `json:"skill"`
+	Training       *TrainingContext  `json:"training,omitempty"`
+	Skills         []SkillDefinition `json:"skills"`
+	Capabilities   map[string]string `json:"capabilities"`
 }
 
 type ChatInput struct {

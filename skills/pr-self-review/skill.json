@@ -1,0 +1,7 @@
+{
+  "id": "pr-self-review",
+  "version": "0.2.0",
+  "contract": "pr-review.v1",
+  "description": "Самопроверка PR через внутренний скилл ревью.",
+  "target": { "id": "internal-pr-review", "version": "1.0.0" }
+}

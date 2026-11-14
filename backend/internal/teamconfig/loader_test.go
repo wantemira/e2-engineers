@@ -1,6 +1,7 @@
 package teamconfig
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,5 +54,36 @@ func TestLoadTeamRejectsDocumentTraversal(t *testing.T) {
 func TestLoadTeamMissingConfiguration(t *testing.T) {
 	if _, err := New(t.TempDir()).Load(); err == nil {
 		t.Fatal("missing configuration must fail")
+	}
+}
+
+func TestSkillBindingsRejectDisabledAndDuplicateSkills(t *testing.T) {
+	root := t.TempDir()
+	for _, directory := range []string{"teams", "skills"} {
+		if err := os.CopyFS(filepath.Join(root, directory), os.DirFS(filepath.Join("../../..", directory))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(root, "teams", "demo-backend", "context.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configuration map[string]any
+	if err := json.Unmarshal(data, &configuration); err != nil {
+		t.Fatal(err)
+	}
+	for _, ids := range [][]string{{}, {"pr-self-review", "pr-self-review"}, {"../outside"}} {
+		configuration["skills"] = ids
+		data, err := json.Marshal(configuration)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(root).Load(); err == nil {
+			t.Fatalf("invalid enabled skills accepted: %v", ids)
+		}
 	}
 }
