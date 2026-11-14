@@ -172,9 +172,18 @@ type Session struct {
 }
 
 type Workspace struct {
-	Messages       []Message                `json:"messages"`
-	Reviews        []ReviewRun              `json:"reviews"`
-	ReviewRequests map[string]ReviewRequest `json:"review_requests"`
+	Messages          []Message                `json:"messages"`
+	Reviews           []ReviewRun              `json:"reviews"`
+	ReviewRequests    map[string]ReviewRequest `json:"review_requests"`
+	PendingOperations []PendingOperation       `json:"pending_operations"`
+}
+
+type PendingOperation struct {
+	OperationID string    `json:"operation_id"`
+	State       string    `json:"state"`
+	Command     Command   `json:"command"`
+	Key         string    `json:"key"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Job struct {

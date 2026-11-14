@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
@@ -197,12 +198,23 @@ func (store *Store) Workspace(owner string) (domain.Workspace, error) {
 		return domain.Workspace{}, err
 	}
 	result := domain.Workspace{
-		Messages:       append([]domain.Message{}, state.Messages[owner]...),
-		Reviews:        append([]domain.ReviewRun{}, state.Reviews[owner]...),
-		ReviewRequests: map[string]domain.ReviewRequest{},
+		Messages:          append([]domain.Message{}, state.Messages[owner]...),
+		Reviews:           append([]domain.ReviewRun{}, state.Reviews[owner]...),
+		ReviewRequests:    map[string]domain.ReviewRequest{},
+		PendingOperations: []domain.PendingOperation{},
 	}
 	for _, job := range state.Operations {
-		if job.Owner != owner || job.Operation.Result == nil || job.Operation.Result.ReviewRequest == nil {
+		if job.Owner != owner {
+			continue
+		}
+		switch job.Operation.State {
+		case "QUEUED", "RUNNING", "RESULT_UNKNOWN":
+			result.PendingOperations = append(result.PendingOperations, domain.PendingOperation{
+				OperationID: job.Operation.ID, State: job.Operation.State,
+				Command: job.Command, Key: job.Key, CreatedAt: job.Operation.CreatedAt,
+			})
+		}
+		if job.Operation.Result == nil || job.Operation.Result.ReviewRequest == nil {
 			continue
 		}
 		index := slices.IndexFunc(result.Reviews, func(run domain.ReviewRun) bool { return run.ID == job.Command.ReviewRunID })
@@ -211,6 +223,12 @@ func (store *Store) Workspace(owner string) (domain.Workspace, error) {
 			result.ReviewRequests[run.PR.Repository+"#"+strconv.Itoa(run.PR.Number)] = *job.Operation.Result.ReviewRequest
 		}
 	}
+	slices.SortFunc(result.PendingOperations, func(a, b domain.PendingOperation) int {
+		if order := a.CreatedAt.Compare(b.CreatedAt); order != 0 {
+			return order
+		}
+		return strings.Compare(a.OperationID, b.OperationID)
+	})
 	return result, nil
 }
 
