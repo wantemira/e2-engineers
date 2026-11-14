@@ -1,0 +1,11 @@
+{
+  "allowed_actors": ["intern-1"],
+  "skills": [
+    {
+      "id": "internal-pr-review",
+      "version": "1.0.0",
+      "contract": "pr-review.v1",
+      "executor": "review-analyzer"
+    }
+  ]
+}
