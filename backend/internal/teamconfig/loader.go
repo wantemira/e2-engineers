@@ -134,6 +134,5 @@ func (loader *Loader) Load() (domain.Team, error) {
 	if !ok || review.Contract != domain.ReviewSkillContract {
 		return domain.Team{}, fmt.Errorf("pr_review requires an enabled %s skill", domain.ReviewSkillContract)
 	}
-	team.Skill = review.Instructions // Compatibility until callers use the catalog directly.
 	return team, nil
 }

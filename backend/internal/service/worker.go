@@ -95,6 +95,9 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 		if current != nil && (strings.Contains(text, "перепроверь") || strings.Contains(text, "проверь ещё") || strings.Contains(text, "проверь еще") || strings.Contains(text, "повторная проверка")) {
 			return service.review(ctx, actor, current.PR.URL, team, op)
 		}
+		if skill := matchingMessageSkill(team, text); skill != nil {
+			return service.skillMessage(ctx, actor, *skill, op)
+		}
 		history := state.Messages
 		if len(history) > 20 {
 			history = history[len(history)-20:]

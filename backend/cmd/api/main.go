@@ -17,6 +17,7 @@ import (
 
 	"github.com/wantemira/e2-engineers/backend/internal/assistant"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpskills"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
 	"github.com/wantemira/e2-engineers/backend/internal/service"
 	"github.com/wantemira/e2-engineers/backend/internal/teamconfig"
@@ -72,12 +73,21 @@ func run() error {
 		}
 	}
 	git := mcpgit.NewMCPGit("http://"+endpoint.String()+"/internal/mcp", secret)
-	app := service.NewService(store, git, assistant.NewLocalAssistant(), teams)
+	localAssistant := assistant.NewLocalAssistant()
+	skillHandler, err := mcpskills.NewHandler(filepath.Join(root, "mocks", "skills.json"), secret, git, teams, localAssistant)
+	if err != nil {
+		return err
+	}
+	internal := http.NewServeMux()
+	internal.Handle("/internal/mcp", gitHandler)
+	internal.Handle("/internal/skills", skillHandler)
+	skills := mcpskills.NewClient("http://"+endpoint.String()+"/internal/skills", secret)
+	app := service.NewService(store, git, localAssistant, teams, skills)
 	origins := []string{"http://127.0.0.1:5173", "http://localhost:5173"}
 	if configured := os.Getenv("FRONTEND_ORIGIN"); configured != "" {
 		origins = []string{configured}
 	}
-	server := &http.Server{Addr: address, Handler: httpapi.NewHTTPHandler(app, gitHandler, origins),
+	server := &http.Server{Addr: address, Handler: httpapi.NewHTTPHandler(app, internal, origins),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

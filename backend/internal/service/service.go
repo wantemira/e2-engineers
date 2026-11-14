@@ -14,12 +14,13 @@ type Service struct {
 	repository Repository
 	git        GitTools
 	assistant  Assistant
+	skills     SkillRunner
 	teams      TeamLoader
 	wake       chan struct{}
 }
 
-func NewService(repository Repository, git GitTools, assistant Assistant, teams TeamLoader) *Service {
-	return &Service{repository: repository, git: git, assistant: assistant, teams: teams, wake: make(chan struct{}, 1)}
+func NewService(repository Repository, git GitTools, assistant Assistant, teams TeamLoader, skills SkillRunner) *Service {
+	return &Service{repository: repository, git: git, assistant: assistant, teams: teams, skills: skills, wake: make(chan struct{}, 1)}
 }
 
 func newID(prefix string) string {

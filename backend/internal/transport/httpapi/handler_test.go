@@ -49,7 +49,7 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 	git := mcpgit.NewMCPGit(gitServer.URL, secret)
 	teams := teamconfig.New(root)
 	localAssistant := assistant.NewLocalAssistant()
-	app := service.NewService(store, git, localAssistant, teams)
+	app := service.NewService(store, git, localAssistant, teams, skillTestClient(t, root, git))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()
@@ -120,7 +120,7 @@ func TestWorkspaceKeepsReviewsAndRequestsScopedToSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restoredApp := service.NewService(reopened, git, localAssistant, teams)
+	restoredApp := service.NewService(reopened, git, localAssistant, teams, skillTestClient(t, root, git))
 	restoredAPI := httptest.NewServer(httpapi.NewHTTPHandler(restoredApp, http.NotFoundHandler(), nil))
 	t.Cleanup(restoredAPI.Close)
 	var restored domain.Workspace
@@ -145,7 +145,7 @@ func TestInvalidRequestsAndPRReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := service.NewService(store, nil, assistant.NewLocalAssistant(), teamconfig.New(root))
+	app := service.NewService(store, nil, assistant.NewLocalAssistant(), teamconfig.New(root), nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()

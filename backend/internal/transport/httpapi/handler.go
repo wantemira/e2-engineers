@@ -31,7 +31,7 @@ type handler struct {
 	app application
 }
 
-func NewHTTPHandler(app application, gitHandler http.Handler, allowedOrigins []string) http.Handler {
+func NewHTTPHandler(app application, internalHandler http.Handler, allowedOrigins []string) http.Handler {
 	handler := handler{app: app}
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/workspace", handler.workspace)
@@ -44,7 +44,7 @@ func NewHTTPHandler(app application, gitHandler http.Handler, allowedOrigins []s
 	api.HandleFunc("GET /api/v1/context/documents/{id}", handler.document)
 
 	mux := http.NewServeMux()
-	mux.Handle("/internal/mcp", gitHandler)
+	mux.Handle("/internal/", internalHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

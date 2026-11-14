@@ -59,7 +59,7 @@ func TestUnknownReviewRequestSurvivesRestartAndUsesOriginalAction(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root))
+		app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root), skillTestClient(t, root, git))
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() { done <- app.Run(ctx) }()

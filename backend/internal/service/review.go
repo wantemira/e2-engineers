@@ -28,18 +28,22 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	if len(pr.Diff) > 200*1024 {
 		return domain.Result{}, domain.Problem("DIFF_TOO_LARGE", "Изменения превышают размер одной проверки.")
 	}
-	checks, checksErr := service.git.GetChecks(ctx, actor, number, pr.HeadSHA)
-	if checksErr != nil {
-		if domain.PublicError(checksErr).Code == "STALE_HEAD" {
-			return domain.Result{}, checksErr
-		}
-		checks = domain.Checks{Status: "UNKNOWN", Label: "Нет данных о проверках"}
-	}
-	analysis, err := service.assistant.Review(ctx, pr, checks, team)
+	skill, err := skillForCapability(team, "pr_review")
 	if err != nil {
 		return domain.Result{}, err
 	}
-	findings := analysis.Findings
+	if skill.Contract != domain.ReviewSkillContract {
+		return domain.Result{}, invalidSkillReply()
+	}
+	var output domain.ReviewSkillOutput
+	execution, err := service.executeSkill(ctx, actor, skill, domain.ReviewSkillInput{PRNumber: number, HeadSHA: pr.HeadSHA}, &output)
+	if err != nil {
+		return domain.Result{}, err
+	}
+	if err := validateSkillReview(output, pr, team); err != nil {
+		return domain.Result{}, err
+	}
+	findings := output.Analysis.Findings
 	if findings == nil {
 		findings = []domain.Finding{}
 	}
@@ -48,9 +52,9 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 		return domain.Result{}, err
 	}
 	run := domain.ReviewRun{ID: "review_" + op.Operation.ID, HeadSHA: pr.HeadSHA, Mentor: team.Mentor, PR: pr.PRInfo,
-		Findings: findings, Assessment: &analysis.Assessment, Diff: pr.Diff, Checks: checks, CreatedAt: time.Now().UTC(), IsStale: latest.HeadSHA != pr.HeadSHA}
+		Findings: findings, Assessment: &output.Analysis.Assessment, Diff: pr.Diff, Checks: output.Checks, Skill: execution, CreatedAt: time.Now().UTC(), IsStale: latest.HeadSHA != pr.HeadSHA}
 	for i := range run.Findings {
-		if location := run.Findings[i].Location; location != nil && location.URL == "" {
+		if location := run.Findings[i].Location; location != nil {
 			location.URL = fmt.Sprintf("/api/v1/self-reviews/%s/diff#finding-%d", run.ID, i+1)
 		}
 	}
@@ -61,11 +65,12 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	if run.IsStale {
 		summary = "PR обновился во время проверки. Отчёт сохранён для предыдущей версии. Запустите проверку повторно."
 	}
+	summary += fmt.Sprintf("\n\nВнутренний скилл: %s@%s. Источник: %s.", execution.Target.ID, execution.Target.Version, execution.Source)
 	messages := []domain.Message{}
 	if op.Command.Kind == "message" {
 		messages = append(messages, domain.Message{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text})
 	}
-	messages = append(messages, domain.Message{ID: "assistant_" + op.Operation.ID, Role: "assistant", Text: summary})
+	messages = append(messages, domain.Message{ID: "assistant_" + op.Operation.ID, Role: "assistant", Text: summary, Skill: execution})
 	return domain.Result{Messages: messages, Review: &run}, nil
 }
 

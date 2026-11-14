@@ -42,7 +42,7 @@ func TestTrainingQuestionReadsVersionedToolsAndRestoresAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root))
+	app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root), skillTestClient(t, root, git))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()
@@ -102,7 +102,7 @@ func TestTrainingQuestionReadsVersionedToolsAndRestoresAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored := httptest.NewServer(httpapi.NewHTTPHandler(service.NewService(reopened, git, assistant.NewLocalAssistant(), teamconfig.New(root)), http.NotFoundHandler(), nil))
+	restored := httptest.NewServer(httpapi.NewHTTPHandler(service.NewService(reopened, git, assistant.NewLocalAssistant(), teamconfig.New(root), skillTestClient(t, root, git)), http.NotFoundHandler(), nil))
 	defer restored.Close()
 	var workspace domain.Workspace
 	apiCall(t, client, "GET", restored.URL+"/api/v1/workspace", "", nil, http.StatusOK, &workspace)
