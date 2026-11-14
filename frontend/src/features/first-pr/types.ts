@@ -3,6 +3,11 @@ export interface SourceLink {
   url: string;
 }
 
+export interface AssistantInfo {
+  mode: "demo" | "live";
+  model?: string;
+}
+
 export interface Mentor {
   id: string;
   name: string;

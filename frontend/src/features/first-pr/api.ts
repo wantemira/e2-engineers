@@ -1,4 +1,5 @@
 import type {
+  AssistantInfo,
   ChatMessage,
   Finding,
   Mentor,
@@ -80,6 +81,7 @@ interface OperationDto {
 }
 
 export interface Workspace {
+  assistant?: AssistantInfo;
   messages: ChatMessage[];
   reviews: ReviewRun[];
   reviewRequests: Record<string, ReviewRequest>;
@@ -88,6 +90,14 @@ export interface Workspace {
 
 function errorMessage(code: string): string {
   switch (code) {
+    case "LLM_CONFIGURATION":
+      return "Проверьте настройки модели и API-ключ на сервере.";
+    case "LLM_TIMEOUT":
+      return "Модель не успела ответить. Попробуйте ещё раз.";
+    case "LLM_UNAVAILABLE":
+      return "Модель временно недоступна. Попробуйте ещё раз.";
+    case "LLM_INVALID_RESULT":
+      return "Ответ модели не прошёл проверку. Повторите запрос.";
     case "SKILL_UNAVAILABLE":
       return "Внутренний скилл недоступен. Уточните его подключение у наставника.";
     case "SKILL_INVALID_RESULT":
@@ -424,6 +434,19 @@ export async function loadWorkspace(signal: AbortSignal): Promise<Workspace> {
   const data = await jsonRequest<Record<string, unknown>>("/workspace", signal);
 
   if (
+    data.assistant !== undefined &&
+    (!isRecord(data.assistant) ||
+      typeof data.assistant.mode !== "string" ||
+      !["demo", "live"].includes(data.assistant.mode) ||
+      (data.assistant.model !== undefined && !isIdentifier(data.assistant.model)) ||
+      (data.assistant.mode === "live" && !isIdentifier(data.assistant.model)))
+  ) {
+    throw new BuddyApiError(
+      errorMessage("INVALID_RESPONSE"), "INVALID_RESPONSE", true,
+    );
+  }
+
+  if (
     !Array.isArray(data.messages) ||
     !Array.isArray(data.reviews) ||
     !isRecord(data.review_requests) ||
@@ -481,7 +504,16 @@ export async function loadWorkspace(signal: AbortSignal): Promise<Workspace> {
     }
   }
 
-  return { messages, reviews, reviewRequests, pendingOperations };
+  const assistant: AssistantInfo | undefined = isRecord(data.assistant)
+    ? {
+        mode: data.assistant.mode as AssistantInfo["mode"],
+        ...(typeof data.assistant.model === "string" ? { model: data.assistant.model } : {}),
+      }
+    : undefined;
+  return {
+    messages, reviews, reviewRequests, pendingOperations,
+    ...(assistant ? { assistant } : {}),
+  };
 }
 
 function pause(signal: AbortSignal): Promise<void> {

@@ -19,6 +19,15 @@ function json(body: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("операции AI-Buddy", () => {
+  it("читает режим Live с сервера и отклоняет повреждённый режим", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ messages: [], reviews: [], review_requests: {}, assistant: { mode: "live", model: "configured-model" } }))
+      .mockResolvedValueOnce(json({ messages: [], reviews: [], review_requests: {}, assistant: { mode: "live" } }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    expect((await loadWorkspace(signal)).assistant).toEqual({ mode: "live", model: "configured-model" });
+    await expect(loadWorkspace(signal)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
   it("повторяет временно упавшую операцию с прежними ID и ключом", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ operation_id: "temporary-op" }, 202))

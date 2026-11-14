@@ -48,7 +48,7 @@ func (service *Service) runNext(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	operationContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	operationContext, cancel := context.WithTimeout(ctx, 60*time.Second)
 	result, runErr := service.process(operationContext, job, workspace)
 	cancel()
 	if ctx.Err() != nil {
@@ -84,6 +84,9 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 	}
 	switch op.Command.Kind {
 	case "message":
+		if agent, ok := service.assistant.(Agent); ok {
+			return service.agentMessage(ctx, agent, actor, team, op, state, current)
+		}
 		text := strings.ToLower(op.Command.Text)
 		ref := referenceInMessage(op.Command.Text)
 		if team.Training != nil && trainingQuestion(text) {

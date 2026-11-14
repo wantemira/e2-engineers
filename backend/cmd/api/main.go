@@ -18,6 +18,7 @@ import (
 	"github.com/wantemira/e2-engineers/backend/internal/assistant"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpskills"
+	"github.com/wantemira/e2-engineers/backend/internal/llm"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
 	"github.com/wantemira/e2-engineers/backend/internal/service"
 	"github.com/wantemira/e2-engineers/backend/internal/teamconfig"
@@ -34,6 +35,10 @@ func main() {
 func run() error {
 	rootFlag := flag.String("root", "..", "project root containing teams, skills and mocks")
 	flag.Parse()
+	model, err := llm.FromEnvironment(os.Getenv)
+	if err != nil {
+		return err
+	}
 	root, err := filepath.Abs(*rootFlag)
 	if err != nil {
 		return fmt.Errorf("resolve project root: %w", err)
@@ -81,8 +86,15 @@ func run() error {
 	internal := http.NewServeMux()
 	internal.Handle("/internal/mcp", gitHandler)
 	internal.Handle("/internal/skills", skillHandler)
-	skills := mcpskills.NewClient("http://"+endpoint.String()+"/internal/skills", secret)
-	app := service.NewService(store, git, localAssistant, teams, skills)
+	var skills service.SkillRunner = mcpskills.NewClient("http://"+endpoint.String()+"/internal/skills", secret)
+	var chat service.Assistant = localAssistant
+	mode := "demo"
+	if model != nil {
+		chat = model
+		skills = llm.NewRunner(model, git, teams, skills)
+		mode = "live"
+	}
+	app := service.NewService(store, git, chat, teams, skills)
 	origins := []string{"http://127.0.0.1:5173", "http://localhost:5173"}
 	if configured := os.Getenv("FRONTEND_ORIGIN"); configured != "" {
 		origins = []string{configured}
@@ -95,7 +107,7 @@ func run() error {
 	go func() { workerDone <- app.Run(ctx) }()
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(listener) }()
-	slog.Info("AI-Buddy API started", "address", listener.Addr().String(), "assistant", "local", "storage", dataDir)
+	slog.Info("AI-Buddy API started", "address", listener.Addr().String(), "assistant", mode, "storage", dataDir)
 	var runErr error
 	workerExited := false
 	select {

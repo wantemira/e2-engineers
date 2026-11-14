@@ -141,7 +141,7 @@ test("от первого сообщения до квитанции и восс
   await expect(log.getByText(/Источник — mock внутреннего скилла/)).toBeVisible();
   const workspace = await (await context.request.get("/api/v1/workspace")).json();
   expect(workspace.reviews[0].skill_execution).toMatchObject({
-    skill: { id: "pr-self-review", version: "0.2.0" },
+    skill: { id: "pr-self-review", version: "0.3.0" },
     target: { id: "internal-pr-review", version: "1.0.0" },
     contract: "pr-review.v1", source: "MOCK",
     run_id: expect.any(String), instructions_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),

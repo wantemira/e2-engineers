@@ -22,6 +22,7 @@ export default defineConfig({
       timeout: 30_000,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: {
+        BUDDY_MODE: "demo",
         HTTP_ADDR: new URL(api).host,
         FRONTEND_ORIGIN: origin,
       },

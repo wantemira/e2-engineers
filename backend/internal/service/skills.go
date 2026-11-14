@@ -32,11 +32,11 @@ func (service *Service) executeSkill(ctx context.Context, actor string, skill do
 	hash := hex.EncodeToString(digest[:])
 	data, err := json.Marshal(reply.Output)
 	if err != nil || len(data) > 256*1024 || reply.Skill != skill.Target || reply.Contract != skill.Contract ||
-		(reply.Source != "MOCK" && reply.Source != "INTERNAL") || strings.TrimSpace(reply.RunID) == "" || len(reply.RunID) > 128 || reply.InstructionsSHA256 != hash ||
+		(reply.Source != "MOCK" && reply.Source != "INTERNAL" && reply.Source != "LLM") || (reply.Source == "LLM" && strings.TrimSpace(reply.Model) == "") || strings.TrimSpace(reply.RunID) == "" || len(reply.RunID) > 128 || reply.InstructionsSHA256 != hash ||
 		domain.DecodeSkillPayload(reply.Output, output) != nil {
 		return nil, invalidSkillReply()
 	}
-	return &domain.SkillExecution{Skill: skill.SkillRef, Target: skill.Target, Contract: skill.Contract, Source: reply.Source, RunID: reply.RunID, InstructionsSHA256: hash}, nil
+	return &domain.SkillExecution{Model: reply.Model, Skill: skill.SkillRef, Target: skill.Target, Contract: skill.Contract, Source: reply.Source, RunID: reply.RunID, InstructionsSHA256: hash}, nil
 }
 
 func skillForCapability(team domain.Team, capability string) (domain.SkillDefinition, error) {
@@ -57,6 +57,9 @@ func matchingMessageSkill(team domain.Team, text string) *domain.SkillDefinition
 }
 
 func skillSourceText(execution *domain.SkillExecution) string {
+	if execution.Source == "LLM" {
+		return "\n\nИсточник анализа — Live LLM (" + execution.Model + "). Данные PR и CI — mock Git через MCP."
+	}
 	if execution.Source == "MOCK" {
 		return "\n\nИсточник — mock внутреннего скилла."
 	}

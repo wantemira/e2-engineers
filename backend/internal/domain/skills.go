@@ -33,6 +33,7 @@ type SkillCall struct {
 }
 
 type SkillReply struct {
+	Model              string         `json:"model,omitempty"`
 	Skill              SkillRef       `json:"skill"`
 	Contract           string         `json:"contract"`
 	Source             string         `json:"source"`
@@ -42,6 +43,7 @@ type SkillReply struct {
 }
 
 type SkillExecution struct {
+	Model              string   `json:"model,omitempty"`
 	Skill              SkillRef `json:"skill"`
 	Target             SkillRef `json:"target"`
 	Contract           string   `json:"contract"`

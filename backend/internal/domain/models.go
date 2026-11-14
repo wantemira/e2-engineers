@@ -16,6 +16,7 @@ type SourceLink struct {
 }
 
 type Message struct {
+	Agent       *AgentTrace     `json:"agent,omitempty"`
 	Skill       *SkillExecution `json:"skill_execution,omitempty"`
 	ID          string          `json:"id"`
 	Role        string          `json:"role"`
@@ -78,17 +79,18 @@ type ReviewAnalysis struct {
 }
 
 type ReviewRun struct {
-	Skill      *SkillExecution   `json:"skill_execution,omitempty"`
-	ID         string            `json:"id"`
-	HeadSHA    string            `json:"head_sha"`
-	Mentor     Mentor            `json:"mentor"`
-	PR         PRInfo            `json:"pr"`
-	Findings   []Finding         `json:"findings"`
-	Assessment *ReviewAssessment `json:"assessment,omitempty"`
-	Diff       string            `json:"diff,omitempty"`
-	Checks     Checks            `json:"checks"`
-	CreatedAt  time.Time         `json:"created_at"`
-	IsStale    bool              `json:"is_stale,omitempty"`
+	RulesSHA256 string            `json:"rules_sha256,omitempty"`
+	Skill       *SkillExecution   `json:"skill_execution,omitempty"`
+	ID          string            `json:"id"`
+	HeadSHA     string            `json:"head_sha"`
+	Mentor      Mentor            `json:"mentor"`
+	PR          PRInfo            `json:"pr"`
+	Findings    []Finding         `json:"findings"`
+	Assessment  *ReviewAssessment `json:"assessment,omitempty"`
+	Diff        string            `json:"diff,omitempty"`
+	Checks      Checks            `json:"checks"`
+	CreatedAt   time.Time         `json:"created_at"`
+	IsStale     bool              `json:"is_stale,omitempty"`
 }
 
 type ReviewRequest struct {
@@ -193,6 +195,7 @@ type Session struct {
 }
 
 type Workspace struct {
+	Assistant         *AssistantInfo           `json:"assistant,omitempty"`
 	Messages          []Message                `json:"messages"`
 	Reviews           []ReviewRun              `json:"reviews"`
 	ReviewRequests    map[string]ReviewRequest `json:"review_requests"`

@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -51,7 +54,15 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	if err != nil {
 		return domain.Result{}, err
 	}
-	run := domain.ReviewRun{ID: "review_" + op.Operation.ID, HeadSHA: pr.HeadSHA, Mentor: team.Mentor, PR: pr.PRInfo,
+	rules, err := json.Marshal(struct {
+		Rules     map[string]domain.Rule
+		Documents []domain.Document
+	}{team.Rules, team.Documents})
+	if err != nil {
+		return domain.Result{}, err
+	}
+	digest := sha256.Sum256(rules)
+	run := domain.ReviewRun{RulesSHA256: hex.EncodeToString(digest[:]), ID: "review_" + op.Operation.ID, HeadSHA: pr.HeadSHA, Mentor: team.Mentor, PR: pr.PRInfo,
 		Findings: findings, Assessment: &output.Analysis.Assessment, Diff: pr.Diff, Checks: output.Checks, Skill: execution, CreatedAt: time.Now().UTC(), IsStale: latest.HeadSHA != pr.HeadSHA}
 	for i := range run.Findings {
 		if location := run.Findings[i].Location; location != nil {

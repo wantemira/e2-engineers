@@ -50,6 +50,11 @@ func (service *Service) Session(token string) (domain.Session, string, error) {
 
 func (service *Service) Workspace(owner string) (domain.Workspace, error) {
 	workspace, err := service.repository.Workspace(owner)
+	info := domain.AssistantInfo{Mode: "demo"}
+	if agent, ok := service.assistant.(Agent); ok {
+		info = agent.Info()
+	}
+	workspace.Assistant = &info
 	for i := range workspace.Reviews {
 		workspace.Reviews[i].Diff = ""
 	}

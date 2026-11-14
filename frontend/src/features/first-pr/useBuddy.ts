@@ -6,6 +6,7 @@ import {
   type PendingCommand,
 } from "./api";
 import type {
+  AssistantInfo,
   BuddyError,
   BusyState,
   ChatMessage,
@@ -28,6 +29,7 @@ function prKey(review: ReviewRun): string {
 }
 
 export function useBuddy() {
+  const [assistant, setAssistant] = useState<AssistantInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<ReviewRun[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -179,6 +181,7 @@ export function useBuddy() {
         if (active.signal.aborted || !mounted.current) return false;
 
         setMessages(workspace.messages);
+        setAssistant(workspace.assistant ?? { mode: "demo" });
         setReviews(workspace.reviews);
         setReviewRequests(workspace.reviewRequests);
         setSelectedId(workspace.reviews[0]?.id ?? null);
@@ -295,6 +298,7 @@ export function useBuddy() {
   }, [initialize, run]);
 
   return {
+    assistant,
     messages,
     reviews,
     currentReview,

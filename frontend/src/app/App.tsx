@@ -46,6 +46,11 @@ export function App() {
             <span>AI-Buddy</span>
           </a>
           <span className={styles.team}>Backend</span>
+          {buddy.assistant && (
+            <span className={styles.team} title={buddy.assistant.model}>
+              {buddy.assistant.mode === "live" ? "Live LLM" : "Demo Mode"}
+            </span>
+          )}
         </div>
       </header>
 

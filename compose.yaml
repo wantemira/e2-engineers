@@ -8,6 +8,12 @@ services:
     environment:
       HTTP_ADDR: 0.0.0.0:8080
       DATA_DIR: /data
+      BUDDY_MODE: ${BUDDY_MODE:-demo}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-20s}
     volumes:
       - state:/data
       - ./teams:/app/teams:ro
