@@ -3,7 +3,6 @@ package mcpgit
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/wantemira/e2-engineers/backend/internal/demo"
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcptransport"
 	"github.com/wantemira/e2-engineers/backend/internal/storage/jsonfile"
 )
 
@@ -96,14 +96,7 @@ func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) 
 		return server.tools(request.Header.Get("X-Buddy-Actor"))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		provided := request.Header.Get("Authorization")
-		if subtle.ConstantTimeCompare([]byte(provided), []byte("Bearer "+secret)) != 1 || request.Header.Get("X-Buddy-Actor") == "" {
-			http.Error(writer, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		handler.ServeHTTP(writer, request)
-	}), nil
+	return mcptransport.Authenticate(secret, handler), nil
 }
 
 func (server *gitServer) tools(actor string) *mcp.Server {
