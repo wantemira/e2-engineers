@@ -2,6 +2,7 @@ import { Button } from "../../../components/Button";
 import { SafeLink } from "../../../components/SafeLink";
 import type { BusyState, ReviewRun } from "../types";
 import { FindingCard } from "./FindingCard";
+import { ChecksPanel } from "./ChecksPanel";
 import styles from "./ReviewPanel.module.css";
 
 type ReviewPanelProps = {
@@ -13,6 +14,7 @@ type ReviewPanelProps = {
   reconciling: boolean;
   onSelectReview: (id: string) => void;
   onRecheck: () => Promise<void>;
+  onRunChecks: () => Promise<void>;
   onRequest: () => void;
 };
 
@@ -25,6 +27,7 @@ export function ReviewPanel({
   reconciling,
   onSelectReview,
   onRecheck,
+  onRunChecks,
   onRequest,
 }: ReviewPanelProps) {
   const isPrevious = Boolean(review && review.id !== currentReview?.id);
@@ -97,6 +100,8 @@ export function ReviewPanel({
               CI · {review.checks.label}
             </p>
 
+            <ChecksPanel checks={review.checks} />
+
             {history.length > 1 && (
               <label className={styles.history}>
                 <span className="visually-hidden">Версия отчёта</span>
@@ -130,6 +135,10 @@ export function ReviewPanel({
                 <p>
                   <strong>Что проверено.</strong> {review.assessment.scope}
                 </p>
+                {review.assessment.ci && <p><strong>Разбор CI.</strong> {review.assessment.ci}</p>}
+                {Boolean(review.assessment.suggestedTests?.length) && (
+                  <div><strong>Рекомендуемые тесты</strong><ul>{review.assessment.suggestedTests!.map((test, index) => <li key={index}>{test}</li>)}</ul></div>
+                )}
               </div>
             )}
 
@@ -147,6 +156,7 @@ export function ReviewPanel({
           </div>
 
           <div className={styles.actions}>
+            {!isPrevious && <Button variant="secondary" disabled={disabled} onClick={() => void onRunChecks()}>Запустить mock CI</Button>}
             {isPrevious ? (
               <Button
                 variant="secondary"

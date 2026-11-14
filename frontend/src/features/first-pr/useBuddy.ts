@@ -266,10 +266,10 @@ export function useBuddy() {
   const requestTarget = pendingRequest?.review ?? currentReview;
   const isReconcilingRequest = pendingRequest !== undefined;
 
-  const recheck = useCallback(async () => {
+  const recheck = useCallback(async (runChecks = false) => {
     if (!currentReview || loading) return;
     await run({
-      command: { kind: "review", prRef: currentReview.pr.url },
+      command: { kind: "review", prRef: currentReview.pr.url, runChecks },
       key: crypto.randomUUID(),
     });
   }, [currentReview, loading, run]);

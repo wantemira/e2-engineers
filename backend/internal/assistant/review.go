@@ -17,7 +17,7 @@ var returnedError = regexp.MustCompile(`^return\s+(?:[^,;]+,\s*)?(errors\.New|fm
 var wrapVerb = regexp.MustCompile(`%(?:\[\d+\])?w`)
 var returnedNil = regexp.MustCompile(`^return(?:\s+[^,;]+,)?\s+nil\s*(?://.*)?$`)
 
-func (*LocalAssistant) Review(ctx context.Context, pr domain.PullRequest, _ domain.Checks, team domain.Team) (domain.ReviewAnalysis, error) {
+func (*LocalAssistant) Review(ctx context.Context, pr domain.PullRequest, checks domain.Checks, team domain.Team) (domain.ReviewAnalysis, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.ReviewAnalysis{}, err
 	}
@@ -144,8 +144,9 @@ func (*LocalAssistant) Review(ctx context.Context, pr domain.PullRequest, _ doma
 		}
 	}
 	scope += " Сборку и тесты PR агент не запускал."
+	ci, suggestedTests := assessChecks(checks, lostCause, pr.Task)
 	return domain.ReviewAnalysis{
 		Findings:   findings,
-		Assessment: domain.ReviewAssessment{Scope: scope, Task: assessTask(pr.Task, lines, visibleWrap, lostCause, hasTestChange)},
+		Assessment: domain.ReviewAssessment{Scope: scope, Task: assessTask(pr.Task, lines, visibleWrap, lostCause, hasTestChange), CI: ci, SuggestedTests: suggestedTests},
 	}, nil
 }

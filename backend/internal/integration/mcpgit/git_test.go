@@ -81,7 +81,7 @@ func TestMCPReadsCurrentPRAndChecks(t *testing.T) {
 		t.Fatalf("unexpected PR: %+v", pr)
 	}
 	checks, err := client.GetChecks(ctx, "intern-1", 17, pr.HeadSHA)
-	if err != nil || checks.Status != "UNKNOWN" {
+	if err != nil || checks.Status != "FAILED" || len(checks.Tests) != 2 || checks.HeadSHA != pr.HeadSHA {
 		t.Fatalf("checks = %+v, error = %v", checks, err)
 	}
 	_, err = client.GetChecks(ctx, "intern-1", 17, "other-commit")

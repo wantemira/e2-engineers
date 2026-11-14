@@ -76,7 +76,7 @@ func TestDemoControlsSwitchChecksAndResetWithoutChangingFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := demo.Load(dataDir)
-	if err != nil || state.Revision != "initial" || state.Checks["initial"].Status != "UNKNOWN" || state.Checks["fixed"].Status != "UNKNOWN" || state.EnvironmentStatus != "STOPPED" {
+	if err != nil || state.Revision != "initial" || len(state.Checks) != 0 || state.EnvironmentStatus != "STOPPED" {
 		t.Fatalf("reset did not restore the starting scenario: %+v, %v", state, err)
 	}
 	after, err = os.ReadFile(path)

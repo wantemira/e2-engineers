@@ -26,7 +26,9 @@ export function App() {
     nextStep = "PR обновился. Запустите проверку снова";
   } else if (currentReview) {
     stage = "Самопроверка завершена";
-    nextStep = "Разберите замечания или отправьте PR наставнику";
+    nextStep = currentReview.checks.status === "FAILED"
+      ? "Разберите падение CI и повторите проверку"
+      : "Разберите замечания или отправьте PR наставнику";
   }
 
   async function confirmReview() {
@@ -88,6 +90,7 @@ export function App() {
             reconciling={buddy.isReconcilingRequest}
             onSelectReview={buddy.selectReview}
             onRecheck={buddy.recheck}
+            onRunChecks={() => buddy.recheck(true)}
             onRequest={() => {
               buddy.dismissError();
               setConfirmationOpen(true);

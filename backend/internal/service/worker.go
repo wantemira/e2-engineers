@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,11 +90,22 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 		}
 		text := strings.ToLower(op.Command.Text)
 		ref := referenceInMessage(op.Command.Text)
-		if team.Training != nil && trainingQuestion(text) {
-			return service.training(ctx, actor, ref, team, op)
+		if wantsCheckRun(text) {
+			if ref == "" {
+				if current != nil {
+					ref = current.PR.URL
+				} else {
+					ref = strconv.Itoa(team.PRNumber)
+				}
+			}
+			op.Command.RunChecks = true
+			return service.review(ctx, actor, ref, team, op)
 		}
 		if ref != "" && (standalonePR.MatchString(op.Command.Text) || containsAny(text, "проверь", "проверить", "самопроверк", "проанализируй", "check ", "review ")) {
 			return service.review(ctx, actor, ref, team, op)
+		}
+		if team.Training != nil && trainingQuestion(text) {
+			return service.training(ctx, actor, ref, team, op)
 		}
 		if current != nil && (strings.Contains(text, "перепроверь") || strings.Contains(text, "проверь ещё") || strings.Contains(text, "проверь еще") || strings.Contains(text, "повторная проверка")) {
 			return service.review(ctx, actor, current.PR.URL, team, op)
@@ -128,4 +140,8 @@ func containsAny(text string, fragments ...string) bool {
 		}
 	}
 	return false
+}
+
+func wantsCheckRun(text string) bool {
+	return !containsAny(text, "как ", "где ") && containsAny(text, "запусти тест", "запустить тест", "прогони тест", "перезапусти тест", "запусти ci", "перезапусти ci")
 }

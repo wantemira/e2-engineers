@@ -225,7 +225,7 @@ func TestDemoControlsAreReadByRunningMCP(t *testing.T) {
 		t.Fatalf("reset did not restore initial PR: %+v, %v", restored, err)
 	}
 	checks, err = git.GetChecks(ctx, "intern-1", 17, initial.HeadSHA)
-	if err != nil || checks.Status != "UNKNOWN" {
+	if err != nil || checks.Status != "FAILED" {
 		t.Fatalf("reset did not restore CI: %+v, %v", checks, err)
 	}
 }

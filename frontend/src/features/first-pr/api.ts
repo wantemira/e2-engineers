@@ -1,5 +1,6 @@
 import type {
   AssistantInfo,
+  Checks,
   ChatMessage,
   Finding,
   Mentor,
@@ -10,7 +11,7 @@ import type {
 
 type Command =
   | { kind: "message"; text: string }
-  | { kind: "review"; prRef: string }
+  | { kind: "review"; prRef: string; runChecks?: boolean }
   | { kind: "request"; reviewRunId: string; mentorId: string };
 
 export interface PendingCommand {
@@ -59,10 +60,44 @@ interface ReviewDto {
   mentor: Mentor;
   pr: ReviewRun["pr"];
   findings: Finding[];
-  assessment?: ReviewRun["assessment"];
-  checks: ReviewRun["checks"];
+  assessment?: { scope: string; task: string; ci?: string; suggested_tests?: string[] };
+  checks: ChecksDto;
   created_at: string;
   is_stale?: boolean;
+}
+
+interface ChecksDto extends Pick<Checks, "status" | "label" | "tests" | "logs" | "source"> {
+  run_id?: string;
+  head_sha?: string;
+  pr_number?: number;
+  created_at?: string;
+}
+
+function mapChecks(dto: ChecksDto, number: number, sha: string): Checks {
+  const invalid = () => new BuddyApiError(errorMessage("INVALID_RESPONSE"), "INVALID_RESPONSE", true);
+  const rich = [dto.run_id, dto.head_sha, dto.pr_number, dto.source, dto.tests, dto.logs, dto.created_at].some((value) => value !== undefined);
+  if (rich && (!isIdentifier(dto.run_id) || dto.run_id.length > 128 || dto.head_sha !== sha || dto.pr_number !== number || dto.source !== "MOCK")) throw invalid();
+  if (dto.logs !== undefined && (typeof dto.logs !== "string" || dto.logs.length > 16000)) throw invalid();
+  if (dto.created_at !== undefined && (typeof dto.created_at !== "string" || !Number.isFinite(Date.parse(dto.created_at)))) throw invalid();
+  if (dto.tests !== undefined) {
+    if (!Array.isArray(dto.tests) || dto.tests.length > 100) throw invalid();
+    const names = new Set<string>();
+    for (const test of dto.tests) {
+      if (!isRecord(test) || !isIdentifier(test.name) || test.name.length > 200 || names.has(test.name) ||
+          !["PASSED", "FAILED", "RUNNING", "SKIPPED"].includes(test.status) ||
+          (test.error !== undefined && (typeof test.error !== "string" || test.error.length > 4000 || test.status !== "FAILED")) ||
+          (dto.status === "PASSED" && ["FAILED", "RUNNING"].includes(test.status))) throw invalid();
+      names.add(test.name);
+    }
+    if (dto.status === "FAILED" && dto.tests.length > 0 && !dto.tests.some((test) => test.status === "FAILED")) throw invalid();
+  }
+  return {
+    status: dto.status, label: dto.label,
+    ...(dto.run_id ? { runId: dto.run_id, headSha: dto.head_sha, prNumber: dto.pr_number, source: dto.source } : {}),
+    ...(dto.tests !== undefined ? { tests: dto.tests } : {}),
+    ...(dto.logs !== undefined ? { logs: dto.logs } : {}),
+    ...(dto.created_at ? { createdAt: dto.created_at } : {}),
+  };
 }
 
 interface MessageDto extends Omit<ChatMessage, "receipt" | "mentorDraft"> {
@@ -291,7 +326,10 @@ function mapResult(
       (review.assessment !== undefined &&
         (!isRecord(review.assessment) ||
           !isIdentifier(review.assessment.scope) ||
-          !isIdentifier(review.assessment.task))) ||
+          !isIdentifier(review.assessment.task) ||
+          (review.assessment.ci !== undefined && typeof review.assessment.ci !== "string") ||
+          (review.assessment.suggested_tests !== undefined &&
+            (!Array.isArray(review.assessment.suggested_tests) || review.assessment.suggested_tests.length > 20 || review.assessment.suggested_tests.some((value) => !isIdentifier(value) || value.length > 4000))))) ||
       !isRecord(review.checks) ||
       typeof review.checks.label !== "string" ||
       !["PASSED", "FAILED", "RUNNING", "UNKNOWN"].includes(
@@ -351,8 +389,12 @@ function mapResult(
             mentor: review.mentor,
             pr: review.pr,
             findings: review.findings,
-            assessment: review.assessment,
-            checks: review.checks,
+            assessment: review.assessment ? {
+              scope: review.assessment.scope, task: review.assessment.task,
+              ...(review.assessment.ci !== undefined ? { ci: review.assessment.ci } : {}),
+              ...(review.assessment.suggested_tests !== undefined ? { suggestedTests: review.assessment.suggested_tests } : {}),
+            } : undefined,
+            checks: mapChecks(review.checks, review.pr.number, review.head_sha),
             createdAt: review.created_at,
             isStale: review.is_stale,
           },
@@ -399,7 +441,10 @@ function mapPendingOperation(value: unknown): PendingCommand {
           true,
         );
       }
-      mapped = { kind: "review", prRef: command.pr_ref };
+      if (command.run_checks !== undefined && typeof command.run_checks !== "boolean") {
+        throw new BuddyApiError(errorMessage("INVALID_RESPONSE"), "INVALID_RESPONSE", true);
+      }
+      mapped = { kind: "review", prRef: command.pr_ref, ...(command.run_checks ? { runChecks: true } : {}) };
       break;
     case "request":
       if (
@@ -536,7 +581,7 @@ function requestFor(command: Command): { path: string; body: unknown } {
     case "message":
       return { path: "/messages", body: { text: command.text } };
     case "review":
-      return { path: "/self-reviews", body: { pr_ref: command.prRef } };
+      return { path: "/self-reviews", body: { pr_ref: command.prRef, ...(command.runChecks ? { run_checks: true } : {}) } };
     case "request":
       return {
         path: "/review-requests",

@@ -5,12 +5,13 @@ type AssistantInfo struct {
 	Model string `json:"model,omitempty"`
 }
 
-// AgentDecision contains only read scenarios; review requests require UI confirmation.
+// AgentDecision permits read scenarios and synthetic CI; review requests require UI confirmation.
 type AgentDecision struct {
-	Tool    string
-	PRRef   string
-	SkillID string
-	Message Message
+	RunChecks bool
+	Tool      string
+	PRRef     string
+	SkillID   string
+	Message   Message
 }
 
 type AgentTrace struct {

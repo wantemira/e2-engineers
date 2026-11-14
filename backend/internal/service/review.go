@@ -31,6 +31,17 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	if len(pr.Diff) > 200*1024 {
 		return domain.Result{}, domain.Problem("DIFF_TOO_LARGE", "Изменения превышают размер одной проверки.")
 	}
+	var requestedChecks *domain.Checks
+	if op.Command.RunChecks {
+		checks, err := service.git.RunChecks(ctx, actor, number, pr.HeadSHA, op.Operation.ID)
+		if err != nil {
+			return domain.Result{}, err
+		}
+		if checks.RunID == "" || domain.ValidateChecks(checks, number, pr.HeadSHA) != nil {
+			return domain.Result{}, invalidSkillReply()
+		}
+		requestedChecks = &checks
+	}
 	skill, err := skillForCapability(team, "pr_review")
 	if err != nil {
 		return domain.Result{}, err
@@ -45,6 +56,9 @@ func (service *Service) review(ctx context.Context, actor, ref string, team doma
 	}
 	if err := validateSkillReview(output, pr, team); err != nil {
 		return domain.Result{}, err
+	}
+	if requestedChecks != nil && output.Checks.RunID != requestedChecks.RunID {
+		return domain.Result{}, invalidSkillReply()
 	}
 	findings := output.Analysis.Findings
 	if findings == nil {

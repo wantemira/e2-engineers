@@ -22,6 +22,7 @@ type GitTools interface {
 	GetTrainingEnvironment(context.Context, string, int, string) (domain.TrainingEnvironment, error)
 	GetPullRequest(context.Context, string, int) (domain.PullRequest, error)
 	GetChecks(context.Context, string, int, string) (domain.Checks, error)
+	RunChecks(context.Context, string, int, string, string) (domain.Checks, error)
 	RequestReview(context.Context, string, int, string, domain.Mentor, string) (domain.ReviewRequest, error)
 }
 

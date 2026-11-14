@@ -75,9 +75,7 @@ func Configure(root, dataDir, revision, checks string, reset bool) error {
 	var state State
 	if reset {
 		state = State{Revision: "initial", Checks: map[string]domain.Checks{}, EnvironmentStatus: "STOPPED"}
-		for name := range fixture.Revisions {
-			state.Checks[name] = domain.Checks{Status: "UNKNOWN", Label: labels["UNKNOWN"]}
-		}
+		// Empty overrides restore the revision-specific fixture (failed / passed).
 	} else {
 		state, err = Load(dataDir)
 		if err != nil {

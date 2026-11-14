@@ -64,13 +64,22 @@ type PullRequest struct {
 }
 
 type Checks struct {
-	Status string `json:"status"`
-	Label  string `json:"label"`
+	PRNumber  int          `json:"pr_number,omitempty"`
+	HeadSHA   string       `json:"head_sha,omitempty"`
+	RunID     string       `json:"run_id,omitempty"`
+	Source    string       `json:"source,omitempty"`
+	Tests     []TestResult `json:"tests,omitempty"`
+	Logs      string       `json:"logs,omitempty"`
+	CreatedAt string       `json:"created_at,omitempty"`
+	Status    string       `json:"status"`
+	Label     string       `json:"label"`
 }
 
 type ReviewAssessment struct {
-	Scope string `json:"scope"`
-	Task  string `json:"task"`
+	CI             string   `json:"ci,omitempty"`
+	SuggestedTests []string `json:"suggested_tests,omitempty"`
+	Scope          string   `json:"scope"`
+	Task           string   `json:"task"`
 }
 
 type ReviewAnalysis struct {
@@ -173,6 +182,7 @@ type Result struct {
 }
 
 type Command struct {
+	RunChecks        bool   `json:"run_checks,omitempty"`
 	Kind             string `json:"kind"`
 	Text             string `json:"text,omitempty"`
 	PRRef            string `json:"pr_ref,omitempty"`

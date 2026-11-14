@@ -39,8 +39,10 @@ type gitAction struct {
 }
 
 type gitState struct {
-	Actions map[string]gitAction            `json:"actions"`
-	Reviews map[string]domain.ReviewRequest `json:"reviews"`
+	CheckActions map[string]checkAction          `json:"check_actions,omitempty"`
+	LatestChecks map[string]checkAction          `json:"latest_checks,omitempty"`
+	Actions      map[string]gitAction            `json:"actions"`
+	Reviews      map[string]domain.ReviewRequest `json:"reviews"`
 }
 
 type gitServer struct {
@@ -91,6 +93,12 @@ func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) 
 			return nil, errors.New("Git state is missing action or review records")
 		}
 	}
+	if server.state.CheckActions == nil {
+		server.state.CheckActions = map[string]checkAction{}
+	}
+	if server.state.LatestChecks == nil {
+		server.state.LatestChecks = map[string]checkAction{}
+	}
 
 	handler := mcp.NewStreamableHTTPHandler(func(request *http.Request) *mcp.Server {
 		return server.tools(request.Header.Get("X-Buddy-Actor"))
@@ -122,11 +130,13 @@ func (server *gitServer) tools(actor string) *mcp.Server {
 		})
 	mcp.AddTool(tools, &mcp.Tool{Name: "get_pull_request_checks", Description: "Read CI status for a specific pull request version"},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input checkArguments) (*mcp.CallToolResult, domain.Checks, error) {
-			revision, err := server.read(ctx, actor, input.Number)
-			if err == nil && revision.PR.HeadSHA != input.HeadSHA {
-				err = domain.Problem("STALE_HEAD", "Версия PR изменилась.")
-			}
-			return nil, revision.Checks, toolError(err)
+			checks, err := server.getChecks(ctx, actor, input)
+			return nil, checks, toolError(err)
+		})
+	mcp.AddTool(tools, &mcp.Tool{Name: "run_pull_request_checks", Description: "Persist an idempotent simulated CI run for an allowed PR/SHA; never executes PR code"},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input runCheckArguments) (*mcp.CallToolResult, domain.Checks, error) {
+			checks, err := server.runChecks(ctx, actor, input)
+			return nil, checks, toolError(err)
 		})
 	mcp.AddTool(tools, &mcp.Tool{Name: "request_pull_request_review", Description: "Register a confirmed review request for the configured mentor"},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input reviewArguments) (*mcp.CallToolResult, domain.ReviewRequest, error) {
@@ -176,6 +186,23 @@ func (server *gitServer) revision() (gitRevision, error) {
 	case "PASSED", "FAILED", "RUNNING", "UNKNOWN":
 	default:
 		return gitRevision{}, errors.New("invalid CI status in PR fixture")
+	}
+	// Older fixture files remain readable. Overrides replace test details rather than
+	// leaving a PASSED label next to a FAILED test from a different simulation.
+	if revision.Checks.RunID == "" {
+		revision.Checks.RunID = "fixture-" + revision.PR.HeadSHA
+	}
+	if revision.Checks.HeadSHA == "" {
+		revision.Checks.HeadSHA = revision.PR.HeadSHA
+	}
+	if revision.Checks.PRNumber == 0 {
+		revision.Checks.PRNumber = revision.PR.Number
+	}
+	if revision.Checks.Source == "" {
+		revision.Checks.Source = "MOCK"
+	}
+	if err := domain.ValidateChecks(revision.Checks, revision.PR.Number, revision.PR.HeadSHA); err != nil {
+		return gitRevision{}, err
 	}
 	return revision, nil
 }
@@ -241,7 +268,8 @@ func (server *gitServer) requestReview(ctx context.Context, actor string, input 
 			PRNumber: input.Number, HeadSHA: input.ExpectedHeadSHA,
 		}
 	}
-	updated := gitState{Actions: maps.Clone(server.state.Actions), Reviews: maps.Clone(server.state.Reviews)}
+	updated := server.state
+	updated.Actions, updated.Reviews = maps.Clone(server.state.Actions), maps.Clone(server.state.Reviews)
 	updated.Actions[key] = gitAction{Fingerprint: fingerprint, Receipt: receipt}
 	updated.Reviews[businessKey] = receipt
 	if err := jsonfile.Write(server.statePath, updated); err != nil {

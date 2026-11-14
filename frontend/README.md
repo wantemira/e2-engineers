@@ -33,7 +33,7 @@ npm run dev
 | `GET /workspace`              | История и `pending_operations` текущей сессии |
 | `POST /messages`              | `{ "text": "Проверь PR #17" }`                             |
 | `GET /self-reviews/{id}/diff` | HTML со снимком diff проверки текущей сессии              |
-| `POST /self-reviews`          | `{ "pr_ref": "https://…/pull/17" }`                        |
+| `POST /self-reviews`          | `{ "pr_ref": "https://…/pull/17", "run_checks": true }` (флаг необязателен) |
 | `POST /review-requests`       | `{ "review_run_id": "…", "expected_mentor_id": "…" }`      |
 | `GET /operations/{id}`        | Состояние фоновой операции                                 |
 | `POST /operations/{id}/retry` | `{}` для повтора временной ошибки или уточнения результата |
@@ -45,5 +45,7 @@ npm run dev
 Для `SUCCEEDED` ответ содержит `result` с новыми `messages` и необязательными `review` / `review_request`. DTO описаны в `api.ts`, модели интерфейса — в `types.ts`. У замечания может быть `location.url` для перехода к строке diff, а у ответа чата — `mentor_draft` для копирования черновика. Имена транспортных полей включают `head_sha`, `created_at`, `is_stale`, `pr_number`. Квитанция с подтверждённым `REQUESTED` обязательна для успешной отправки наставнику. Ошибки имеют `{ "code": "STALE_HEAD", "retryable": false }`. Проверка доступа, фактические статусы и идемпотентность записи выполняются backend и корпоративным сервисом.
 
 Go backend запускается отдельно на `127.0.0.1:8080`, порядок запуска описан в README проекта. В текущем режиме ответы формируются локально по командным файлам. После перезагрузки вкладки frontend восстанавливает завершённые сообщения, проверки и квитанции этой сессии через `/workspace`.
+
+Блок CI показывает источник MOCK, ID запуска, SHA, отдельные тесты и логи. «Запустить mock CI» запускает новую синтетическую проверку и self-review; «Проверить повторно» анализирует последний результат без нового запуска. `checks` дополнен полями `pr_number`, `head_sha`, `run_id`, `source`, `created_at`, `tests`, `logs`. `assessment.ci` и `assessment.suggested_tests` содержат объяснение и рекомендации. Старые отчёты без этих полей поддерживаются. Подробный контракт и сценарий — в [CI / SDD](../docs/ci.md).
 
 Незавершённая операция в `pending_operations` содержит `operation_id`, `state`, `key`, исходную `command` и `created_at`. Backend возвращает QUEUED, RUNNING и RESULT_UNKNOWN только владельцу сессии. Frontend при открытии читает эти операции по ID. Для RESULT_UNKNOWN повторная запись выполняется после действия пользователя через `/operations/{id}/retry` с исходным ключом. Отсутствующее поле `pending_operations` трактуется как пустой список для совместимости с прежним API.

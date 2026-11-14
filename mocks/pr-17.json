@@ -19,8 +19,25 @@
         "diff": "diff --git a/internal/orders/service.go b/internal/orders/service.go\n--- a/internal/orders/service.go\n+++ b/internal/orders/service.go\n@@ -35,2 +35,7 @@\n func (service *Service) Create(ctx context.Context, input Input) (Order, error) {\n+    order, err := service.repository.Create(ctx, input)\n+    if err != nil {\n+        return Order{}, errors.New(\"create order failed\")\n+    }\n+    return order, nil\n }\n"
       },
       "checks": {
-        "status": "UNKNOWN",
-        "label": "Данных о CI пока нет"
+        "status": "FAILED",
+        "label": "Не прошёл TestCreateRepositoryError",
+        "pr_number": 17,
+        "head_sha": "a13d9c2000000000000000000000000000000000",
+        "run_id": "fixture-initial",
+        "source": "MOCK",
+        "created_at": "2026-11-15T00:00:00Z",
+        "tests": [
+          {
+            "name": "TestCreateSuccess",
+            "status": "PASSED"
+          },
+          {
+            "name": "TestCreateRepositoryError",
+            "status": "FAILED",
+            "error": "expected wrapped storage error, got create order failed"
+          }
+        ],
+        "logs": "=== RUN   TestCreateSuccess\n--- PASS: TestCreateSuccess\n=== RUN   TestCreateRepositoryError\n    service_test.go:25: expected wrapped storage error, got create order failed\n--- FAIL: TestCreateRepositoryError\nFAIL"
       }
     },
     "fixed": {
@@ -36,8 +53,24 @@
         "diff": "diff --git a/internal/orders/service.go b/internal/orders/service.go\n--- a/internal/orders/service.go\n+++ b/internal/orders/service.go\n@@ -35,2 +35,7 @@\n func (service *Service) Create(ctx context.Context, input Input) (Order, error) {\n+\torder, err := service.repository.Create(ctx, input)\n+\tif err != nil {\n+\t\treturn Order{}, fmt.Errorf(\"create order: %w\", err)\n+\t}\n+\treturn order, nil\n }\ndiff --git a/internal/orders/service_test.go b/internal/orders/service_test.go\n--- /dev/null\n+++ b/internal/orders/service_test.go\n@@ -0,0 +1,9 @@\n+func TestCreateRepositoryError(t *testing.T) {\n+\texpected := errors.New(\"storage unavailable\")\n+\trepository := &fakeRepository{err: expected}\n+\tservice := &Service{repository: repository}\n+\t_, actual := service.Create(context.Background(), Input{})\n+\tif !errors.Is(actual, expected) {\n+\t\tt.Fatalf(\"expected wrapped storage error, got %v\", actual)\n+\t}\n+}\n"
       },
       "checks": {
-        "status": "UNKNOWN",
-        "label": "Данных о CI пока нет"
+        "status": "PASSED",
+        "label": "Все демонстрационные тесты прошли",
+        "pr_number": 17,
+        "head_sha": "c84be19000000000000000000000000000000000",
+        "run_id": "fixture-fixed",
+        "source": "MOCK",
+        "created_at": "2026-11-15T00:00:00Z",
+        "tests": [
+          {
+            "name": "TestCreateSuccess",
+            "status": "PASSED"
+          },
+          {
+            "name": "TestCreateRepositoryError",
+            "status": "PASSED"
+          }
+        ],
+        "logs": "=== RUN   TestCreateSuccess\n--- PASS: TestCreateSuccess\n=== RUN   TestCreateRepositoryError\n--- PASS: TestCreateRepositoryError\nPASS"
       }
     }
   }

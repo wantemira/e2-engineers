@@ -29,6 +29,45 @@ async function saveCoverage(page: Page, name: string) {
   await writeFile(join("coverage", "raw", `browser-${name}.json`), JSON.stringify(counters));
 }
 
+test("PR и mock CI: падение, объяснение, повторный запуск и исправленная версия", async ({ page, context }) => {
+  await configureDemo("-reset");
+  const ci = page.getByRole("region", { name: "Результаты CI" });
+  try {
+    await page.goto("/");
+    await expect(page.getByRole("log").getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+    await send(page, "Проверь PR #17 и запусти тесты");
+    await expect(ci.getByText("TestCreateRepositoryError", { exact: true })).toBeVisible();
+    await expect(ci.getByText(/Код PR не выполняется/)).toBeVisible();
+    await expect(ci.locator("li").filter({ hasText: "TestCreateRepositoryError" })).toContainText("FAILED");
+    await ci.getByText("Логи mock CI").click();
+    await expect(ci.locator("details pre")).toContainText("expected wrapped storage error");
+    const firstRun = await ci.getByText(/ID запуска/).innerText();
+    expect(firstRun).toContain("CI-");
+    await expect(page.getByText(/Разберите падение CI/)).toBeVisible();
+    await send(page, "Почему упал тест?");
+    await expect(page.getByRole("log").getByText(/Проверка ожидает сохранённую причину ошибки/)).toBeVisible();
+    await page.getByRole("button", { name: "Запустить mock CI" }).click();
+    await expect(ci.getByText(/ID запуска/)).not.toHaveText(firstRun);
+    await configureDemo("-revision", "fixed");
+    await page.getByRole("button", { name: "Запустить mock CI" }).click();
+    await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
+    await expect(ci.locator("li").filter({ hasText: "TestCreateRepositoryError" })).toContainText("PASSED");
+    const fixedRun = await ci.getByText(/ID запуска/).innerText();
+    const workspace = await (await context.request.get("/api/v1/workspace")).json();
+    expect(workspace.reviews[0].checks.head_sha).toBe(workspace.reviews[0].head_sha);
+    expect(workspace.reviews[0].checks.run_id).not.toBe(workspace.reviews[2].checks.run_id);
+    await page.getByLabel("Версия отчёта").selectOption({ index: 2 });
+    await expect(ci.getByText(/ID запуска/)).toHaveText(firstRun);
+    await expect(ci.locator("li").filter({ hasText: "TestCreateRepositoryError" })).toContainText("FAILED");
+    await page.reload();
+    await expect(ci.getByText(/ID запуска/)).toHaveText(fixedRun);
+    await expect(ci.locator("li").filter({ hasText: "TestCreateRepositoryError" })).toContainText("PASSED");
+    await saveCoverage(page, "ci-runs");
+  } finally {
+    await configureDemo("-reset");
+  }
+});
+
 test("ошибка внутреннего скилла видна в чате и не создаёт отчёт", async ({ page, context }) => {
   const path = join(root, "mocks", "skills.json");
   const original = await readFile(path, "utf8");
@@ -141,7 +180,7 @@ test("от первого сообщения до квитанции и восс
   await expect(log.getByText(/Источник — mock внутреннего скилла/)).toBeVisible();
   const workspace = await (await context.request.get("/api/v1/workspace")).json();
   expect(workspace.reviews[0].skill_execution).toMatchObject({
-    skill: { id: "pr-self-review", version: "0.3.0" },
+    skill: { id: "pr-self-review", version: "0.4.0" },
     target: { id: "internal-pr-review", version: "1.0.0" },
     contract: "pr-review.v1", source: "MOCK",
     run_id: expect.any(String), instructions_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -382,12 +421,12 @@ test("показывает учебное окружение, команды и 
     await configureDemo("-revision", "fixed");
     await configureDemo("-checks", "FAILED");
     await send(page, "Покажи результат тестов");
-    const checked = log.getByText(/CI — FAILED/);
+    const checked = log.getByText(/CI — FAILED/).filter({ hasText: "c84be19" });
     await expect(checked).toContainText("статус READY");
     await expect(checked).toContainText("c84be19");
     await expect(checked).toContainText("Разберите ошибку CI");
     await page.reload();
-    await expect(log.getByText(/CI — FAILED/)).toBeVisible();
+    await expect(checked).toBeVisible();
     await expect(log.getByText(/статус STOPPED/)).toBeVisible();
     await saveCoverage(page, "training");
   } finally {

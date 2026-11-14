@@ -19,6 +19,35 @@ function json(body: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("операции AI-Buddy", () => {
+  it.each(["valid", "wrong SHA", "wrong source", "contradictory pass", "bad test"])("проверяет CI-контракт: %s", async (scenario) => {
+    const checks = {
+      status: "FAILED", label: "Test failed", run_id: "CI-1", head_sha: "commit-1", pr_number: 17, source: "MOCK",
+      tests: [{ name: "TestError", status: "FAILED", error: "expected wrapped error" }], logs: "FAIL TestError",
+    };
+    if (scenario === "wrong SHA") checks.head_sha = "other";
+    if (scenario === "wrong source") checks.source = "REAL";
+    if (scenario === "contradictory pass") checks.status = "PASSED";
+    if (scenario === "bad test") checks.tests[0].status = "GREEN";
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "ci-op" }, 202))
+      .mockResolvedValueOnce(json({ state: "SUCCEEDED", result: { messages: [], review: {
+        id: "review-1", head_sha: "commit-1", mentor: receipt.mentor,
+        pr: { number: 17, title: "PR", repository: "backend", url: "https://example.test/pull/17" },
+        findings: [], checks, created_at: "2026-11-15T00:00:00Z",
+        assessment: { scope: "diff", task: "task", ci: "TestError failed", suggested_tests: ["Assert errors.Is"] },
+      } } }));
+    vi.stubGlobal("fetch", fetch);
+    const pending = { command: { kind: "review" as const, prRef: "17", runChecks: true }, key: "ci-key" };
+    const promise = executeCommand(pending, new AbortController().signal);
+    if (scenario === "valid") {
+      const result = await promise;
+      expect(result.review?.checks.runId).toBe("CI-1");
+      expect(result.review?.assessment?.suggestedTests).toEqual(["Assert errors.Is"]);
+      expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ pr_ref: "17", run_checks: true });
+    } else {
+      await expect(promise).rejects.toMatchObject({ code: "INVALID_RESPONSE", operationId: "ci-op" });
+    }
+  });
   it("читает режим Live с сервера и отклоняет повреждённый режим", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ messages: [], reviews: [], review_requests: {}, assistant: { mode: "live", model: "configured-model" } }))

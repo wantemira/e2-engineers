@@ -82,6 +82,14 @@ func (service *Service) skillMessage(ctx context.Context, actor string, skill do
 }
 
 func validateSkillReview(output domain.ReviewSkillOutput, pr domain.PullRequest, team domain.Team) error {
+	if domain.ValidateChecks(output.Checks, pr.Number, pr.HeadSHA) != nil || len(output.Analysis.Assessment.CI) > 16000 || len(output.Analysis.Assessment.SuggestedTests) > 20 {
+		return invalidSkillReply()
+	}
+	for _, suggestion := range output.Analysis.Assessment.SuggestedTests {
+		if strings.TrimSpace(suggestion) == "" || len(suggestion) > 4000 {
+			return invalidSkillReply()
+		}
+	}
 	if output.PRNumber != pr.Number || output.HeadSHA != pr.HeadSHA ||
 		!slices.Contains([]string{"UNKNOWN", "RUNNING", "FAILED", "PASSED"}, output.Checks.Status) || output.Checks.Label == "" ||
 		strings.TrimSpace(output.Analysis.Assessment.Scope) == "" || strings.TrimSpace(output.Analysis.Assessment.Task) == "" || len(output.Analysis.Findings) > 200 {

@@ -27,6 +27,16 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 		}
 		return explain(*finding), nil
 	}
+	if input.CurrentReview != nil && checksQuestion(text) {
+		assessment := input.CurrentReview.Assessment
+		if assessment != nil && assessment.CI != "" {
+			text := assessment.CI
+			if len(assessment.SuggestedTests) > 0 {
+				text += "\n\nРекомендуемые тесты:\n- " + strings.Join(assessment.SuggestedTests, "\n- ")
+			}
+			return reply(text), nil
+		}
+	}
 	if containsAny(text, "больнич", "болею", "заболел") {
 		message := documentAnswer(input.Team, "people-guide", "Больничный")
 		if input.Team.PeopleAgentURL != "" {

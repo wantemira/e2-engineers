@@ -112,7 +112,8 @@ func (h handler) message(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) selfReview(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		PRRef string `json:"pr_ref"`
+		PRRef     string `json:"pr_ref"`
+		RunChecks bool   `json:"run_checks"`
 	}
 	if !decodeBody(w, r, &input) {
 		return
@@ -122,7 +123,7 @@ func (h handler) selfReview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, domain.Problem("INVALID_INPUT", "Укажите номер или ссылку на PR."))
 		return
 	}
-	h.submit(w, r, domain.Command{Kind: "review", PRRef: input.PRRef})
+	h.submit(w, r, domain.Command{Kind: "review", PRRef: input.PRRef, RunChecks: input.RunChecks})
 }
 
 func (h handler) reviewRequest(w http.ResponseWriter, r *http.Request) {

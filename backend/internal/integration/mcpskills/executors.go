@@ -56,6 +56,9 @@ func reviewAdapter(ctx context.Context, actor string, call domain.SkillCall, _ d
 		}
 		checks = domain.Checks{Status: "UNKNOWN", Label: "Нет данных о проверках"}
 	}
+	if domain.ValidateChecks(checks, pr.Number, pr.HeadSHA) != nil {
+		return nil, domain.Problem("SKILL_INVALID_RESULT", "CI не соответствует проверяемой версии PR.")
+	}
 	analysis, err := dependencies.reviewer.Review(ctx, pr, checks, team)
 	if err != nil {
 		return nil, err

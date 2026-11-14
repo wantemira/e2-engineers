@@ -47,6 +47,18 @@ export interface Finding {
   };
 }
 
+export interface Checks {
+  status: "PASSED" | "FAILED" | "RUNNING" | "UNKNOWN";
+  label: string;
+  runId?: string;
+  headSha?: string;
+  prNumber?: number;
+  source?: "MOCK";
+  tests?: { name: string; status: "PASSED" | "FAILED" | "RUNNING" | "SKIPPED"; error?: string }[];
+  logs?: string;
+  createdAt?: string;
+}
+
 export interface ReviewRun {
   id: string;
   headSha: string;
@@ -58,11 +70,8 @@ export interface ReviewRun {
     url: string;
   };
   findings: Finding[];
-  assessment?: { scope: string; task: string };
-  checks: {
-    status: "PASSED" | "FAILED" | "RUNNING" | "UNKNOWN";
-    label: string;
-  };
+  assessment?: { scope: string; task: string; ci?: string; suggestedTests?: string[] };
+  checks: Checks;
   createdAt: string;
   isStale?: boolean;
 }

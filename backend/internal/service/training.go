@@ -9,6 +9,9 @@ import (
 )
 
 func trainingQuestion(text string) bool {
+	if containsAny(text, "почему", "объясни", "что означает", "какой тест") && containsAny(text, "тест", "ci", "пайплайн") {
+		return false
+	}
 	if containsAny(text, "замечан", "пункт") && containsAny(text, "объясни", "почему", "исправ") {
 		return false
 	}

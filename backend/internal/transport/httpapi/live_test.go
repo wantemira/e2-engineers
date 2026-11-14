@@ -71,7 +71,7 @@ func liveAPI(t *testing.T, provider http.HandlerFunc) (string, *httptest.Server)
 }
 
 func reviewArguments(line int) map[string]any {
-	return map[string]any{"scope": "Анализ доступного diff", "task": "Причина ошибки не сохранена", "findings": []any{map[string]any{
+	return map[string]any{"scope": "Анализ доступного diff", "task": "Причина ошибки не сохранена", "ci_summary": "TestCreateRepositoryError подтверждает потерю причины ошибки.", "suggested_tests": []string{"Проверьте errors.Is(actual, expected) при ошибке repository.Create."}, "findings": []any{map[string]any{
 		"id": "generated", "kind": "problem", "title": "Сохраните причину ошибки", "description": "errors.New заменяет исходную ошибку. Используйте fmt.Errorf с %w и добавьте TestCreateRepositoryError.",
 		"path": "internal/orders/service.go", "line": line, "rule_id": "GO-ERR-01",
 	}}}
@@ -94,7 +94,7 @@ func TestLiveHTTPReviewUsesSkillAndMCPAndPreservesConfirmation(t *testing.T) {
 		input := body.Messages[1].Content
 		if strings.Contains(input, `"untrusted_pull_request"`) {
 			analyses.Add(1)
-			if !strings.Contains(input, "errors.New") || !strings.Contains(input, "GO-ERR-01") || !strings.Contains(input, "# Самопроверка PR") {
+			if !strings.Contains(input, "errors.New") || !strings.Contains(input, "GO-ERR-01") || !strings.Contains(input, "# Самопроверка PR") || !strings.Contains(input, "expected wrapped storage error") || !strings.Contains(input, `CI-`) {
 				t.Error("missing MCP data, rules or skill")
 			}
 			if changed.Load() && !strings.Contains(input, "AUDIT_CHANGED_INSTRUCTIONS") {
@@ -107,16 +107,16 @@ func TestLiveHTTPReviewUsesSkillAndMCPAndPreservesConfirmation(t *testing.T) {
 			}
 			modelCall(w, "answer_question", map[string]any{"text": "Нужна цепочка ошибок для errors.Is.", "document_ids": []string{"review-rules"}, "mentor_draft": ""})
 		} else {
-			modelCall(w, "run_pr_self_review", map[string]string{"pr_ref": "17"})
+			modelCall(w, "run_pr_self_review", map[string]any{"pr_ref": "17", "run_checks": true})
 		}
 	})
 	client := sessionClient(t)
-	first := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "live-review", map[string]string{"text": "Посмотри мои изменения в PR #17"}))
+	first := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "live-review", map[string]string{"text": "Посмотри мои изменения в PR #17 и запусти тесты"}))
 	if first.State != "SUCCEEDED" || first.Result == nil || first.Result.Review == nil {
 		t.Fatalf("live review failed: %+v", first)
 	}
 	run := first.Result.Review
-	if run.Skill.Source != "LLM" || run.Skill.Model != "contract-model" || len(run.RulesSHA256) != 64 || run.Checks.Status != "UNKNOWN" || len(run.Findings) != 1 || run.Findings[0].Location.Line != 38 {
+	if run.Skill.Source != "LLM" || run.Skill.Model != "contract-model" || len(run.RulesSHA256) != 64 || run.Checks.Status != "FAILED" || len(run.Findings) != 1 || run.Findings[0].Location.Line != 38 || run.Assessment.CI == "" || len(run.Assessment.SuggestedTests) == 0 {
 		t.Fatalf("bad live report: %+v", run)
 	}
 	if first.Result.Messages[1].Agent.Tool != "run_pr_self_review" {

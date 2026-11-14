@@ -28,6 +28,7 @@ func (service *Service) agentMessage(ctx context.Context, agent Agent, actor str
 		message.ID, message.Role = "assistant_"+op.Operation.ID, "assistant"
 		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
 	case "run_pr_self_review":
+		op.Command.RunChecks = decision.RunChecks
 		result, err = service.review(ctx, actor, decision.PRRef, team, op)
 	case "get_training_status":
 		if team.Training == nil {
