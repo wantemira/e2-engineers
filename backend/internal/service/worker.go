@@ -86,6 +86,9 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 	case "message":
 		text := strings.ToLower(op.Command.Text)
 		ref := referenceInMessage(op.Command.Text)
+		if team.Training != nil && trainingQuestion(text) {
+			return service.training(ctx, actor, ref, team, op)
+		}
 		if ref != "" && (standalonePR.MatchString(op.Command.Text) || containsAny(text, "проверь", "проверить", "самопроверк", "проанализируй", "check ", "review ")) {
 			return service.review(ctx, actor, ref, team, op)
 		}

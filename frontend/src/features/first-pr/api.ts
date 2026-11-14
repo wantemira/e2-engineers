@@ -88,6 +88,8 @@ export interface Workspace {
 
 function errorMessage(code: string): string {
   switch (code) {
+    case "ENVIRONMENT_UNAVAILABLE":
+      return "Данные учебного окружения недоступны. Уточните конфигурацию у наставника.";
     case "STALE_HEAD":
       return "В PR появились новые изменения. Запустите проверку повторно.";
     case "NOT_FOUND":
