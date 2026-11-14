@@ -22,13 +22,15 @@ import (
 )
 
 type gitFixture struct {
-	CurrentRevision string                 `json:"current_revision"`
-	Revisions       map[string]gitRevision `json:"revisions"`
+	Training        *domain.TrainingEnvironment `json:"training_environment,omitempty"`
+	CurrentRevision string                      `json:"current_revision"`
+	Revisions       map[string]gitRevision      `json:"revisions"`
 }
 
 type gitRevision struct {
-	PR     domain.PullRequest `json:"pr"`
-	Checks domain.Checks      `json:"checks"`
+	Training *domain.TrainingEnvironment `json:"-"`
+	PR       domain.PullRequest          `json:"pr"`
+	Checks   domain.Checks               `json:"checks"`
 }
 
 type gitAction struct {
@@ -64,7 +66,7 @@ type reviewArguments struct {
 	ActionKey       string `json:"action_key"`
 }
 
-// NewGitHandler serves the three PR tools over an authenticated MCP HTTP endpoint.
+// NewGitHandler serves PR and training tools over an authenticated MCP HTTP endpoint.
 func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) {
 	if secret == "" {
 		return nil, errors.New("MCP shared secret is required")
@@ -106,6 +108,20 @@ func NewGitHandler(fixturePath, statePath, secret string) (http.Handler, error) 
 
 func (server *gitServer) tools(actor string) *mcp.Server {
 	tools := mcp.NewServer(&mcp.Implementation{Name: "ai-buddy-git", Version: "0.1.0"}, nil)
+	mcp.AddTool(tools, &mcp.Tool{Name: "get_training_environment", Description: "Read simulated training environment status for an allowed PR version"},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input checkArguments) (*mcp.CallToolResult, domain.TrainingEnvironment, error) {
+			revision, err := server.read(ctx, actor, input.Number)
+			if err != nil {
+				return nil, domain.TrainingEnvironment{}, toolError(err)
+			}
+			if revision.PR.HeadSHA != input.HeadSHA {
+				return nil, domain.TrainingEnvironment{}, toolError(domain.Problem("STALE_HEAD", "Версия PR изменилась."))
+			}
+			if revision.Training == nil {
+				return nil, domain.TrainingEnvironment{}, toolError(domain.Problem("ENVIRONMENT_UNAVAILABLE", "Учебное окружение не настроено."))
+			}
+			return nil, *revision.Training, nil
+		})
 	mcp.AddTool(tools, &mcp.Tool{Name: "get_pull_request", Description: "Read an allowed pull request and its current diff"},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input prArguments) (*mcp.CallToolResult, domain.PullRequest, error) {
 			revision, err := server.read(ctx, actor, input.Number)
@@ -145,6 +161,18 @@ func (server *gitServer) revision() (gitRevision, error) {
 		selected = controls.Revision
 	}
 	revision, ok := fixture.Revisions[selected]
+	if fixture.Training != nil {
+		environment := *fixture.Training
+		environment.Source = "MOCK"
+		environment.PRNumber, environment.HeadSHA = revision.PR.Number, revision.PR.HeadSHA
+		if controls.EnvironmentStatus != "" {
+			environment.Status = controls.EnvironmentStatus
+		}
+		if !demo.ValidEnvironmentStatus(environment.Status) || environment.Service == "" || environment.Name == "" {
+			return gitRevision{}, errors.New("invalid training environment")
+		}
+		revision.Training = &environment
+	}
 	if checks, overridden := controls.Checks[selected]; overridden {
 		revision.Checks = checks
 	}

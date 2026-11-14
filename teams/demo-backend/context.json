@@ -5,11 +5,19 @@
   "repository_url": "https://github.com/wantemira/e2-engineers",
   "pr_number": 17,
   "mentor": { "id": "mentor-backend", "name": "Алексей, Backend" },
+  "training": {
+    "service": "orders-training",
+    "environment": "training",
+    "guide_id": "environment-guide",
+    "start_command": "make training-up",
+    "test_command": "make training-test"
+  },
   "documents": [
     { "id": "context", "title": "Контекст Backend-команды", "file": "context.md" },
     { "id": "review-rules", "title": "Правила разработки и ревью", "file": "review-rules.md" },
     { "id": "access-guide", "title": "Доступ к рабочим инструментам", "file": "access-guide.md" },
-    { "id": "people-guide", "title": "Организационные вопросы", "file": "people-guide.md" }
+    { "id": "people-guide", "title": "Организационные вопросы", "file": "people-guide.md" },
+    { "id": "environment-guide", "title": "Учебный сервис и тестовое окружение", "file": "environment-guide.md" }
   ],
   "rules": {
     "GO-ERR-01": { "id": "GO-ERR-01", "label": "Обработка ошибок", "url": "/api/v1/context/documents/review-rules#GO-ERR-01" },

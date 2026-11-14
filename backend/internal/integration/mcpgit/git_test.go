@@ -97,6 +97,56 @@ func TestMCPReadsCurrentPRAndChecks(t *testing.T) {
 	}
 }
 
+func TestTrainingToolChecksActorPRAndSHA(t *testing.T) {
+	fixture, state := gitTestFiles(t)
+	server := startGitTestServer(t, fixture, state)
+	client := NewMCPGit(server.URL, "test-secret")
+	ctx := context.Background()
+	pr, err := client.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := client.GetTrainingEnvironment(ctx, "intern-1", 17, pr.HeadSHA)
+	if err != nil || environment.Source != "MOCK" || environment.Status != "STOPPED" || environment.HeadSHA != pr.HeadSHA || environment.Service != "orders-training" {
+		t.Fatalf("unexpected training environment: %+v, %v", environment, err)
+	}
+	_, err = client.GetTrainingEnvironment(ctx, "intern-2", 17, pr.HeadSHA)
+	requireGitError(t, err, "NOT_FOUND")
+	_, err = client.GetTrainingEnvironment(ctx, "intern-1", 99, pr.HeadSHA)
+	requireGitError(t, err, "NOT_FOUND")
+	_, err = client.GetTrainingEnvironment(ctx, "intern-1", 17, "other-sha")
+	requireGitError(t, err, "STALE_HEAD")
+}
+
+func TestLegacyPRFixtureStillWorksWithoutTrainingMetadata(t *testing.T) {
+	path, state := gitTestFiles(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture gitFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	fixture.Training = nil
+	data, err = json.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := startGitTestServer(t, path, state)
+	client := NewMCPGit(server.URL, "test-secret")
+	ctx := context.Background()
+	pr, err := client.GetPullRequest(ctx, "intern-1", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.GetTrainingEnvironment(ctx, "intern-1", 17, pr.HeadSHA)
+	requireGitError(t, err, "ENVIRONMENT_UNAVAILABLE")
+}
+
 func TestMCPRejectsForeignPRAndActor(t *testing.T) {
 	fixture, state := gitTestFiles(t)
 	server := startGitTestServer(t, fixture, state)

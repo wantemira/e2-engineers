@@ -26,7 +26,7 @@ func TestLoadTeam(t *testing.T) {
 	if team.ID != "backend" || team.PRNumber != 17 || team.Mentor.ID != "mentor-backend" || team.RepositoryURL != "https://github.com/wantemira/e2-engineers" {
 		t.Fatalf("unexpected team configuration: %+v", team)
 	}
-	if len(team.Documents) != 4 || team.Skill == "" || team.Rules["GO-ERR-01"].ID != "GO-ERR-01" {
+	if len(team.Documents) != 5 || team.Skill == "" || team.Rules["GO-ERR-01"].ID != "GO-ERR-01" {
 		t.Fatalf("team knowledge was not loaded: %+v", team)
 	}
 }

@@ -18,15 +18,16 @@ type configuredDocument struct {
 }
 
 type teamConfiguration struct {
-	PeopleAgentURL string                 `json:"people_agent_url"`
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	Repository     string                 `json:"repository"`
-	RepositoryURL  string                 `json:"repository_url"`
-	PRNumber       int                    `json:"pr_number"`
-	Mentor         domain.Mentor          `json:"mentor"`
-	Documents      []configuredDocument   `json:"documents"`
-	Rules          map[string]domain.Rule `json:"rules"`
+	Training       *domain.TrainingContext `json:"training"`
+	PeopleAgentURL string                  `json:"people_agent_url"`
+	ID             string                  `json:"id"`
+	Name           string                  `json:"name"`
+	Repository     string                  `json:"repository"`
+	RepositoryURL  string                  `json:"repository_url"`
+	PRNumber       int                     `json:"pr_number"`
+	Mentor         domain.Mentor           `json:"mentor"`
+	Documents      []configuredDocument    `json:"documents"`
+	Rules          map[string]domain.Rule  `json:"rules"`
 }
 
 type Loader struct {
@@ -57,6 +58,7 @@ func (loader *Loader) Load() (domain.Team, error) {
 		}
 	}
 	team := domain.Team{
+		Training:       configuration.Training,
 		PeopleAgentURL: configuration.PeopleAgentURL,
 		ID:             configuration.ID, Name: configuration.Name, Repository: configuration.Repository,
 		PRNumber: configuration.PRNumber, Mentor: configuration.Mentor, Rules: configuration.Rules,
@@ -81,6 +83,11 @@ func (loader *Loader) Load() (domain.Team, error) {
 	for _, id := range []string{"context", "review-rules", "access-guide", "people-guide"} {
 		if !seen[id] {
 			return domain.Team{}, fmt.Errorf("required team document %s is missing", id)
+		}
+	}
+	if training := team.Training; training != nil {
+		if training.Service == "" || training.Environment == "" || !seen[training.GuideID] || training.StartCommand == "" || training.TestCommand == "" {
+			return domain.Team{}, fmt.Errorf("training configuration is missing service, environment, guide or commands")
 		}
 	}
 	for _, id := range []string{"GO-ERR-01", "GO-TEST-01"} {

@@ -1,4 +1,9 @@
 {
+  "training_environment": {
+    "service": "orders-training",
+    "name": "training",
+    "status": "STOPPED"
+  },
   "current_revision": "initial",
   "revisions": {
     "initial": {

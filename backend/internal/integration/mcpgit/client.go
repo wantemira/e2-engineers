@@ -22,6 +22,12 @@ func NewMCPGit(endpoint, secret string) *Client {
 	return &Client{endpoint: endpoint, secret: secret}
 }
 
+func (git *Client) GetTrainingEnvironment(ctx context.Context, actor string, number int, sha string) (domain.TrainingEnvironment, error) {
+	var output domain.TrainingEnvironment
+	err := git.call(ctx, actor, "get_training_environment", checkArguments{Number: number, HeadSHA: sha}, &output)
+	return output, err
+}
+
 func (git *Client) GetPullRequest(ctx context.Context, actor string, number int) (domain.PullRequest, error) {
 	var output domain.PullRequest
 	err := git.call(ctx, actor, "get_pull_request", prArguments{Number: number}, &output)

@@ -103,17 +103,35 @@ type Document struct {
 	Body  string `json:"body"`
 }
 
+type TrainingContext struct {
+	Service      string `json:"service"`
+	Environment  string `json:"environment"`
+	GuideID      string `json:"guide_id"`
+	StartCommand string `json:"start_command"`
+	TestCommand  string `json:"test_command"`
+}
+
+type TrainingEnvironment struct {
+	Service  string `json:"service"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Source   string `json:"source"`
+	PRNumber int    `json:"pr_number"`
+	HeadSHA  string `json:"head_sha"`
+}
+
 type Team struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Repository     string          `json:"repository"`
-	RepositoryURL  string          `json:"repository_url"`
-	PRNumber       int             `json:"pr_number"`
-	Mentor         Mentor          `json:"mentor"`
-	Documents      []Document      `json:"documents"`
-	Rules          map[string]Rule `json:"rules"`
-	PeopleAgentURL string          `json:"people_agent_url,omitempty"`
-	Skill          string          `json:"skill"`
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	Repository     string           `json:"repository"`
+	RepositoryURL  string           `json:"repository_url"`
+	PRNumber       int              `json:"pr_number"`
+	Mentor         Mentor           `json:"mentor"`
+	Documents      []Document       `json:"documents"`
+	Rules          map[string]Rule  `json:"rules"`
+	PeopleAgentURL string           `json:"people_agent_url,omitempty"`
+	Skill          string           `json:"skill"`
+	Training       *TrainingContext `json:"training,omitempty"`
 }
 
 type ChatInput struct {
