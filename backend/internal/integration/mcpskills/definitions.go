@@ -43,13 +43,10 @@ func loadDefinitions(path string) (configuration, error) {
 			return config, fmt.Errorf("invalid or duplicate internal skill %s", skill.ID)
 		}
 		seen[skill.SkillRef] = true
-		if skill.Executor == "review-analyzer" && skill.Contract == domain.ReviewSkillContract {
-			continue
+		adapter, ok := executors[skill.Executor]
+		if !ok || adapter.contract != skill.Contract || (adapter.validate != nil && !adapter.validate(skill)) {
+			return config, fmt.Errorf("unsupported executor/contract for internal skill %s", skill.ID)
 		}
-		if skill.Executor == "fixture" && skill.Contract == domain.MessageSkillContract && skill.Output.Text != "" && len(skill.Output.Text) <= 32000 {
-			continue
-		}
-		return config, fmt.Errorf("unsupported executor/contract for internal skill %s", skill.ID)
 	}
 	return config, nil
 }

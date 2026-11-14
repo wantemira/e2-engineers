@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
@@ -74,45 +73,9 @@ func execute(ctx context.Context, path, actor string, call domain.SkillCall, git
 	if skill.Contract != call.Contract || strings.TrimSpace(call.Instructions) == "" || len(call.Instructions) > 64*1024 {
 		return reply, domain.Problem("INVALID_INPUT", "Некорректный контракт или инструкции скилла.")
 	}
-	var output any
-	switch skill.Executor {
-	case "review-analyzer":
-		var input domain.ReviewSkillInput
-		if domain.DecodeSkillPayload(call.Input, &input) != nil || input.PRNumber < 1 || input.HeadSHA == "" {
-			return reply, domain.Problem("INVALID_INPUT", "Укажите PR и версию для внутреннего ревью.")
-		}
-		pr, err := git.GetPullRequest(ctx, actor, input.PRNumber)
-		if err != nil {
-			return reply, err
-		}
-		team, err := teams.Load()
-		if err != nil {
-			return reply, err
-		}
-		if pr.OwnerID != actor || pr.Repository != team.Repository || pr.Number != team.PRNumber {
-			return reply, domain.Problem("NOT_FOUND", "PR недоступен внутреннему скиллу.")
-		}
-		if pr.HeadSHA != input.HeadSHA {
-			return reply, domain.Problem("STALE_HEAD", "PR обновился до вызова внутреннего ревью.")
-		}
-		checks, err := git.GetChecks(ctx, actor, pr.Number, pr.HeadSHA)
-		if err != nil {
-			if domain.PublicError(err).Code == "STALE_HEAD" {
-				return reply, err
-			}
-			checks = domain.Checks{Status: "UNKNOWN", Label: "Нет данных о проверках"}
-		}
-		analysis, err := reviewer.Review(ctx, pr, checks, team)
-		if err != nil {
-			return reply, err
-		}
-		output = domain.ReviewSkillOutput{PRNumber: pr.Number, HeadSHA: pr.HeadSHA, Checks: checks, Analysis: analysis}
-	case "fixture":
-		var input domain.MessageSkillInput
-		if domain.DecodeSkillPayload(call.Input, &input) != nil || strings.TrimSpace(input.Text) == "" || utf8.RuneCountInString(input.Text) > 8000 {
-			return reply, domain.Problem("INVALID_INPUT", "Некорректный вход текстового скилла.")
-		}
-		output = skill.Output
+	output, err := executors[skill.Executor].run(ctx, actor, call, skill, dependencies{git: git, teams: teams, reviewer: reviewer})
+	if err != nil {
+		return reply, err
 	}
 	payload, err := domain.SkillPayload(output)
 	if err != nil {
