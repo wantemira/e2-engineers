@@ -29,6 +29,30 @@ async function saveCoverage(page: Page, name: string) {
   await writeFile(join("coverage", "raw", `browser-${name}.json`), JSON.stringify(counters));
 }
 
+test("ошибка внутреннего скилла видна в чате и не создаёт отчёт", async ({ page, context }) => {
+  const path = join(root, "mocks", "skills.json");
+  const original = await readFile(path, "utf8");
+  try {
+    const unavailable = JSON.parse(original);
+    unavailable.skills[0].version = "99.0.0";
+    await writeFile(path, JSON.stringify(unavailable));
+    await page.goto("/");
+    await expect(page.getByRole("log").getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+    await send(page, "Проверь PR #17");
+    await expect(page.getByRole("log").getByRole("alert")).toContainText("Внутренний скилл недоступен");
+    const workspace = await (await context.request.get("/api/v1/workspace")).json();
+    expect(workspace.reviews).toEqual([]);
+    expect(workspace.review_requests).toEqual({});
+    await writeFile(path, original);
+    await send(page, "Проверь PR #17");
+    await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
+    await expect(page.getByRole("log").getByText(/Источник — mock внутреннего скилла/)).toBeVisible();
+    await saveCoverage(page, "skill-recovery");
+  } finally {
+    await writeFile(path, original);
+  }
+});
+
 test("от первого сообщения до квитанции и восстановления истории", async ({ page, context }) => {
   const log = page.getByRole("log");
   const confirmButton = page.getByRole("button", { name: "Отправить наставнику" });
@@ -42,6 +66,14 @@ test("от первого сообщения до квитанции и восс
   await expect(page.getByRole("heading", { name: "Теряется причина ошибки" })).toBeVisible();
   await expect(page.getByText(/заменяет исходную ошибку/)).toBeVisible();
   await expect(page.getByText(/Сборку и тесты PR агент не запускал/)).toBeVisible();
+  await expect(log.getByText(/Источник — mock внутреннего скилла/)).toBeVisible();
+  const workspace = await (await context.request.get("/api/v1/workspace")).json();
+  expect(workspace.reviews[0].skill_execution).toMatchObject({
+    skill: { id: "pr-self-review", version: "0.2.0" },
+    target: { id: "internal-pr-review", version: "1.0.0" },
+    contract: "pr-review.v1", source: "MOCK",
+    run_id: expect.any(String), instructions_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
 
   const finding = page.getByRole("link", { name: "internal/orders/service.go:38" });
   const diffHref = await finding.getAttribute("href");

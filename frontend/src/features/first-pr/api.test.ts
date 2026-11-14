@@ -19,6 +19,20 @@ function json(body: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("операции AI-Buddy", () => {
+  it.each([
+    ["SKILL_UNAVAILABLE", "Внутренний скилл недоступен"],
+    ["SKILL_INVALID_RESULT", "Не удалось проверить ответ внутреннего скилла"],
+  ])("показывает понятную ошибку %s", async (code, message) => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "skill-operation" }, 202))
+      .mockResolvedValueOnce(json({ state: "FAILED", error: { code, retryable: false } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(executeCommand({
+      command: { kind: "review", prRef: "17" }, key: "skill-key",
+    }, new AbortController().signal)).rejects.toMatchObject({
+      code, message: expect.stringContaining(message),
+    });
+  });
   it("загружает пустую историю и сохранённые квитанции через сессионный запрос", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(
       json({

@@ -88,6 +88,10 @@ export interface Workspace {
 
 function errorMessage(code: string): string {
   switch (code) {
+    case "SKILL_UNAVAILABLE":
+      return "Внутренний скилл недоступен. Уточните его подключение у наставника.";
+    case "SKILL_INVALID_RESULT":
+      return "Не удалось проверить ответ внутреннего скилла. Запустите проверку повторно.";
     case "ENVIRONMENT_UNAVAILABLE":
       return "Данные учебного окружения недоступны. Уточните конфигурацию у наставника.";
     case "STALE_HEAD":
