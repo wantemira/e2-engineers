@@ -151,6 +151,7 @@ type Team struct {
 }
 
 type ChatInput struct {
+	Knowledge     *Investigation `json:"knowledge,omitempty"`
 	Text          string
 	History       []Message
 	CurrentReview *ReviewRun
@@ -158,6 +159,7 @@ type ChatInput struct {
 }
 
 type AppError struct {
+	Reason    string `json:"reason,omitempty"`
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	Retryable bool   `json:"retryable"`

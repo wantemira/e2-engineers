@@ -9,7 +9,7 @@ import (
 
 func Escalate(input domain.ChatInput) domain.Message {
 	question := strings.TrimSpace(input.Text)
-	generic := contains(strings.ToLower(question), "наставник", "ментор") && !contains(strings.ToLower(question), "ошиб", "не могу", "не получается", "403", "500", "502", "pr #", "доступ", "ресурс", ":")
+	generic := AcceptsEscalation(input) || contains(strings.ToLower(question), "наставник", "ментор") && !contains(strings.ToLower(question), "ошиб", "не могу", "не получается", "403", "500", "502", "pr #", "доступ", "ресурс", ":")
 	continuation := contains(strings.ToLower(question), "уже проверил", "уже пробовал", "не помогло", "всё равно", "все равно")
 	context := []string{}
 	seen := map[string]bool{}
@@ -36,6 +36,9 @@ func Escalate(input domain.ChatInput) domain.Message {
 	}
 	if generic && len(context) == 0 && lastSearch != nil {
 		question = lastSearch.Search.Query
+		if lastSearch.Question != "" {
+			question = lastSearch.Question
+		}
 	}
 	if generic && len(context) == 0 && input.CurrentReview == nil && lastSearch == nil {
 		return domain.Message{Role: "assistant", Text: "Опишите, что вы пытались сделать, какую ошибку получили и что уже проверили. По этим данным подготовлю обращение наставнику.", Help: Trace(input.Team, "clarify", "")}

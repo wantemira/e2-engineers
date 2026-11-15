@@ -41,6 +41,7 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(
 const operationTimeoutMs = 90_000;
 
 interface ErrorDto {
+ reason?: string;
   code?: string;
   message?: string;
   retryable?: boolean;
@@ -123,7 +124,31 @@ export interface Workspace {
   pendingOperations: PendingCommand[];
 }
 
-function errorMessage(code: string): string {
+function errorMessage(code: string, reason?: string): string {
+ if (code === "LLM_UNAVAILABLE") {
+  if (reason === "rate_limit") return "Провайдер ограничил число запросов к модели. Подождите и повторите запрос.";
+  if (reason === "provider_error") return "Сервер провайдера модели вернул временную ошибку. Повторите позже.";
+  if (reason === "network") return "Сервер AI-Buddy не смог связаться с провайдером модели. Проверьте соединение и повторите.";
+ }
+
+ if (code === "LLM_INVALID_RESULT" && typeof reason === "string") {
+  const causes: Record<string,string> = {
+   truncated: "Модель не завершила ответ: достигнут лимит длины.",
+   response_json: "Провайдер вернул ответ в некорректном формате.",
+   response_shape: "Провайдер вернул неподдерживаемую структуру ответа.",
+   response_too_large: "Ответ модели превысил допустимый размер.",
+   tool_required: "Модель ответила текстом вместо требуемого структурированного результата.",
+   tool_call_count: "Модель вернула несколько действий вместо одного или пропустила действие.",
+   tool_call_shape: "Модель некорректно оформила вызов инструмента.",
+   tool_not_allowed: "Модель выбрала недоступный инструмент.",
+   arguments_json: "Модель передала инструменту данные, не соответствующие формату.",
+   review_fields: "В отчёте модели отсутствуют обязательные поля или превышен лимит замечаний.",
+   finding_location: "Модель указала некорректную позицию замечания в коде.",
+   unknown_rule: "Модель сослалась на неизвестное правило команды.",
+  };
+  if (Object.hasOwn(causes, reason)) return `${causes[reason]} Повторите запрос.`;
+ }
+
   switch (code) {
     case "HELP_NOT_FOUND":
       return "Источник, ресурс или помощник не настроен для команды. Уточните запрос.";
@@ -134,7 +159,7 @@ function errorMessage(code: string): string {
     case "LLM_UNAVAILABLE":
       return "Модель временно недоступна. Попробуйте ещё раз.";
     case "LLM_INVALID_RESULT":
-      return "Ответ модели не прошёл проверку. Повторите запрос.";
+      return "Модель вернула некорректный технический ответ. Это не оценка PR. Повторите запрос.";
     case "SKILL_UNAVAILABLE":
       return "Внутренний скилл недоступен. Уточните его подключение у наставника.";
     case "SKILL_INVALID_RESULT":
@@ -228,7 +253,7 @@ async function jsonRequest<T>(
       typeof data.retryable === "boolean"
         ? data.retryable
         : response.status >= 500;
-    throw new BuddyApiError(errorMessage(code), code, retryable);
+    throw new BuddyApiError(errorMessage(code, data.reason), code, retryable);
   }
 
   if (!isRecord(payload)) {
@@ -661,7 +686,7 @@ export async function executeCommand(
               ? operation.error.code
               : "OPERATION_FAILED";
           const retryable = operation.error?.retryable === true;
-          throw new BuddyApiError(errorMessage(code), code, retryable, operationId, retryable);
+          throw new BuddyApiError(errorMessage(code, operation.error?.reason), code, retryable, operationId, retryable);
         }
         case "RESULT_UNKNOWN":
           throw new BuddyApiError(

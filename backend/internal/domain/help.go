@@ -33,6 +33,7 @@ type AssistantRoute struct {
 }
 
 type HelpTrace struct {
+	EscalationOffered  bool           `json:"escalation_offered,omitempty"`
 	Investigation      *Investigation `json:"investigation,omitempty"`
 	Kind               string         `json:"kind"`
 	TargetID           string         `json:"target_id,omitempty"`

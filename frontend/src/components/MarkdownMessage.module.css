@@ -1,0 +1,103 @@
+.message {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.message > * {
+  margin: 0;
+}
+.message > * + * {
+  margin-top: 12px;
+}
+.message p {
+  white-space: pre-line;
+}
+.message strong {
+  font-weight: 800;
+}
+.message :is(h3, h4, h5, h6) {
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 800;
+}
+.message > :is(h3, h4, h5, h6):not(:first-child) {
+  margin-top: 22px;
+}
+.message :is(h3, h4, h5, h6) + p,
+.message p:has(> strong:only-child) + p {
+  margin-top: 6px;
+}
+.message :is(ul, ol) {
+  padding-left: 22px;
+}
+.message ul {
+  list-style: disc;
+}
+.message ol {
+  list-style: decimal;
+}
+.message li + li {
+  margin-top: 6px;
+}
+.message li > p + p,
+.message li > :is(ul, ol) {
+  margin-top: 6px;
+}
+.message code {
+  padding: 2px 5px;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  background: #f6f7f9;
+  color: #37334c;
+  font-family: var(--font-code);
+  font-size: 0.9em;
+  box-decoration-break: clone;
+}
+.message pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 14px 16px;
+  border: 1px solid #e1e5eb;
+  border-radius: 10px;
+  background: #f6f7f9;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 2;
+  line-height: 1.7;
+}
+.message pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #242b3a;
+  font-size: 12px;
+}
+.message blockquote {
+  padding-left: 12px;
+  border-left: 3px solid #d8c4f3;
+  color: var(--color-muted);
+}
+.message hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.tableScroll {
+  overflow-x: auto;
+}
+.tableScroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tableScroll :is(th, td) {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+.tableScroll th {
+  background: var(--color-surface);
+  font-weight: 700;
+}

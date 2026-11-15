@@ -152,3 +152,21 @@ func TestEscalationWithNewCheckResultPreservesInvestigatedProblem(t *testing.T) 
 		}
 	}
 }
+
+func TestDraftRequestWordOrderAndInformationIntent(t *testing.T) {
+	team := load(t)
+	for _, question := range []string{"давай вопрос наставнику подготовим", "помоги составить сообщение ментору", "подготовим обращение наставнику", "Подготовь вопрос наставнику"} {
+		if !teamhelp.WantsEscalation(question) {
+			t.Fatalf("missed draft intent: %s", question)
+		}
+	}
+	for _, question := range []string{"Как подготовить PR к ревью наставника?", "Как составить вопрос наставнику?", "Не нужно готовить сообщение наставнику"} {
+		if teamhelp.WantsEscalation(question) {
+			t.Fatalf("non-draft request: %s", question)
+		}
+	}
+	message := teamhelp.Answer(domain.ChatInput{Text: "про графану что знаешь?", Team: team})
+	if message.Help.Kind == "access" || message.MentorDraft != "" {
+		t.Fatalf("general question became access request: %+v", message)
+	}
+}

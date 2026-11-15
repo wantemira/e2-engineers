@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -62,7 +63,7 @@ func NewHandler(secret string, teams TeamLoader) http.Handler {
 func tokens(text string) []string {
 	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 	seen := map[string]bool{}
-	stop := " не да на но из мы вы он по за до со от во об же ли то ещё еще как что где когда почему меня мне мой моя это уже могу получается помогло пробовал проверил нужно нужен хочу ошибка ошибки сервис сервиса сервисе вопрос доступ получить после чтобы который какой какая какая-то есть нет для или при помоги пожалуйста help the and "
+	stop := " про всё все можешь можешь рассказать расскажи слышал слышала знаешь знать супер так ладно ну такое там тут просто умеешь не да на но из мы вы он по за до со от во об же ли то ещё еще как что где когда почему меня мне мой моя это уже могу получается помогло пробовал проверил нужно нужен хочу ошибка ошибки сервис сервиса сервисе вопрос доступ получить после чтобы который какой какая какая-то есть нет для или при помоги пожалуйста help the and "
 	result := []string{}
 	for _, w := range words {
 		if len([]rune(w)) < 2 || strings.Contains(stop, " "+w+" ") || seen[w] {
@@ -82,7 +83,48 @@ func Search(team domain.Team, query string) domain.KnowledgeSearch {
 		score int
 	}
 	matches := []ranked{}
-	words := tokens(query)
+	normalized := strings.ToLower(query)
+	if team.Help != nil {
+		for _, resource := range team.Help.Access {
+			for _, alias := range append([]string{resource.Name}, resource.Aliases...) {
+				pattern := `(?i)(^|[^\pL\pN])` + regexp.QuoteMeta(alias) + `($|[^\pL\pN])`
+				if regexp.MustCompile(pattern).MatchString(normalized) {
+					normalized += " " + strings.ToLower(resource.Name)
+					break
+				}
+			}
+		}
+	}
+	if team.Help != nil {
+		for _, route := range team.Help.Assistants {
+			for _, keyword := range route.Keywords {
+				matched := strings.Contains(normalized, strings.ToLower(keyword))
+				if len([]rune(keyword)) <= 3 {
+					matched = regexp.MustCompile(`(?i)(^|[^\pL\pN])` + regexp.QuoteMeta(keyword) + `($|[^\pL\pN])`).MatchString(normalized)
+				}
+				if matched {
+					normalized += " " + strings.ToLower(route.Section)
+					break
+				}
+			}
+		}
+	}
+	words := tokens(normalized)
+	// Specific Latin tool names must match; generic CI/CD words alone must not
+	// masquerade as an instruction for a different, unknown product.
+	specific := []string{}
+	for _, word := range words {
+		ascii := len(word) >= 4
+		for _, r := range word {
+			if r < 'a' || r > 'z' {
+				ascii = false
+				break
+			}
+		}
+		if ascii && word != "access" && word != "permission" && word != "please" {
+			specific = append(specific, word)
+		}
+	}
 	for _, doc := range team.Documents {
 		for _, section := range domain.Sections(doc) {
 			if strings.TrimSpace(section.Body) == "" {
@@ -94,6 +136,18 @@ func Search(team domain.Team, query string) domain.KnowledgeSearch {
 			}
 			value := 0
 			body := strings.ToLower(section.Title + " " + section.Body)
+			if len(specific) > 0 {
+				matched := false
+				for _, word := range specific {
+					if strings.Contains(body, word) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
 			for _, word := range words {
 				if strings.Contains(body, word) {
 					value++

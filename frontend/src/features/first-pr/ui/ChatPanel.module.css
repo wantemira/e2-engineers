@@ -28,6 +28,7 @@
 }
 .assistant {
   display: grid;
+  min-width: 0;
   gap: 6px;
   flex-shrink: 0;
   font-size: 14px;

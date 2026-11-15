@@ -19,6 +19,34 @@ function json(body: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("операции AI-Buddy", () => {
+  it.each([
+    ["rate_limit", "ограничил число запросов"],
+    ["provider_error", "временную ошибку"],
+    ["network", "не смог связаться"],
+  ])("различает недоступность модели: %s", async (reason, explanation) => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "provider-failed" }, 202))
+      .mockResolvedValueOnce(json({ state: "FAILED", error: { code: "LLM_UNAVAILABLE", reason, retryable: true } })));
+    await expect(executeCommand({ command: { kind: "message", text: "Как получить доступ к CI?" }, key: "provider-key" }, new AbortController().signal))
+      .rejects.toMatchObject({ code: "LLM_UNAVAILABLE", message: expect.stringContaining(explanation) });
+  });
+
+  it.each([
+    ["truncated", "достигнут лимит длины"],
+    ["unknown_rule", "неизвестное правило команды"],
+    ["tool_required", "вместо требуемого структурированного результата"],
+    ["__proto__", "Это не оценка PR"],
+  ])("объясняет безопасную причину отклонения LLM: %s", async (reason, explanation) => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "rejected-review" }, 202))
+      .mockResolvedValueOnce(json({ state: "FAILED", error: {
+        code: "LLM_INVALID_RESULT", reason, message: "SENSITIVE_PROVIDER_CONTENT", retryable: true,
+      } })));
+    const result = executeCommand({ command: { kind: "review", prRef: "17" }, key: "rejected-review-key" }, new AbortController().signal);
+    await expect(result).rejects.toMatchObject({ code: "LLM_INVALID_RESULT", retryable: true, operationId: "rejected-review", message: expect.stringContaining(explanation) });
+    await expect(result).rejects.not.toHaveProperty("message", expect.stringContaining("SENSITIVE_PROVIDER_CONTENT"));
+  });
+
   it.each(["valid", "wrong SHA", "wrong source", "contradictory pass", "bad test"])("проверяет CI-контракт: %s", async (scenario) => {
     const checks = {
       status: "FAILED", label: "Test failed", run_id: "CI-1", head_sha: "commit-1", pr_number: 17, source: "MOCK",

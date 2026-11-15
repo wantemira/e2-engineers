@@ -1,10 +1,12 @@
 package httpapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpknowledge"
 	"github.com/wantemira/e2-engineers/backend/internal/teamconfig"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,9 @@ import (
 
 func TestLiveHelpUsesCatalogSourcesAndGroundedEscalation(t *testing.T) {
 	root, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if answerKnowledgeForTest(t, w, r) {
+			return
+		}
 		var body struct {
 			Messages []struct {
 				Content string `json:"content"`
@@ -78,8 +83,8 @@ func TestLiveHelpUsesCatalogSourcesAndGroundedEscalation(t *testing.T) {
 		t.Fatalf("bad handoff: %+v", vacation)
 	}
 	unknown := run("unknown", "Отправь к выдуманному боту")
-	if unknown.State != "FAILED" || unknown.Error.Code != "LLM_INVALID_RESULT" {
-		t.Fatal("invented assistant accepted")
+	if unknown.State != "SUCCEEDED" || unknown.Result.Messages[1].Help.Kind != "not_found" || unknown.Result.Messages[1].Help.TargetID != "" {
+		t.Fatal("unknown assistant did not offer grounded escalation")
 	}
 	problem := run("problem", "Не могу запустить orders: получаю 502")
 	if problem.State != "SUCCEEDED" || problem.Result.Messages[1].MentorDraft != "" || problem.Result.Messages[1].Help.Investigation == nil || !strings.Contains(problem.Result.Messages[1].Text, "STOPPED") || problem.Result.Messages[1].Agent.Tool != "search_team_knowledge" {
@@ -147,6 +152,9 @@ func (k *failOnceKnowledge) Search(_ context.Context, actor, query string) (doma
 func TestLiveSearchOutageRetriesSameOperationWithoutDuplicateMessages(t *testing.T) {
 	knowledge := &failOnceKnowledge{}
 	_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if answerKnowledgeForTest(t, w, r) {
+			return
+		}
 		modelCall(w, "search_team_knowledge", map[string]string{"query": "orders 502"})
 	}, knowledge)
 	client := sessionClient(t)
@@ -166,13 +174,150 @@ func TestLiveSearchOutageRetriesSameOperationWithoutDuplicateMessages(t *testing
 		t.Fatalf("retry duplicated or wrote to Git: %+v", workspace)
 	}
 }
-func TestLivePrematureEscalationRunsSearchInstead(t *testing.T) {
+func TestLiveConversationClarifiesUnknownTermThenDraftsWithNaturalWording(t *testing.T) {
+	for _, subject := range []string{"обсервер", "пульсар", "зефир"} {
+		t.Run(subject, func(t *testing.T) {
+			var searches atomic.Int32
+			_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
+				if answerKnowledgeForTest(t, w, r) {
+					return
+				}
+				var body struct {
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+				}
+				if json.NewDecoder(r.Body).Decode(&body) != nil {
+					t.Fatal("invalid request")
+				}
+				var input struct {
+					Question string `json:"question"`
+				}
+				json.Unmarshal([]byte(body.Messages[1].Content), &input)
+				if strings.Contains(input.Question, "наставнику") {
+					modelCall(w, "find_team_help", map[string]string{"kind": "escalation", "target_id": ""})
+					return
+				}
+				searches.Add(1)
+				modelCall(w, "search_team_knowledge", map[string]string{"query": subject, "purpose": "information"})
+			})
+			client := sessionClient(t)
+			question := "супер! а про " + subject + " слышал? можешь рассказать все что знаешь"
+			first := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "observer", map[string]string{"text": question}))
+			if first.State != "SUCCEEDED" || first.Result.Messages[1].Help.Investigation.Purpose != "information" || len(first.Result.Messages[1].Help.Investigation.Observations) != 0 || strings.Contains(first.Result.Messages[1].Text, "ошибки") {
+				t.Fatalf("informational query became diagnosis: %+v", first)
+			}
+			draft := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "observer-draft", map[string]string{"text": "давай вопрос наставнику подготовим"}))
+			if draft.State != "SUCCEEDED" || draft.Result.Messages[1].Help.Kind != "escalation" || !strings.Contains(draft.Result.Messages[1].MentorDraft, question) || strings.Contains(draft.Result.Messages[1].MentorDraft, "Grafana") || searches.Load() != 0 {
+				t.Fatalf("natural draft request searched mentor instructions: %+v", draft)
+			}
+			var workspace domain.Workspace
+			apiCall(t, client, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &workspace)
+			if len(workspace.ReviewRequests) != 0 {
+				t.Fatal("draft sent a message")
+			}
+		})
+	}
+}
+
+// Test provider for the second, evidence-only model call. Routing providers above
+// still choose the first tool explicitly; synthesis sees the actual MCP results.
+func answerKnowledgeForTest(t *testing.T, w http.ResponseWriter, r *http.Request) bool {
+	t.Helper()
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		t.Error(err)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(data))
+	var body struct {
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+		Tools []struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+	if json.Unmarshal(data, &body) != nil || len(body.Tools) != 1 || body.Tools[0].Function.Name != "answer_from_knowledge" {
+		return false
+	}
+	var input struct {
+		Evidence domain.Investigation `json:"evidence"`
+	}
+	if len(body.Messages) != 2 || json.Unmarshal([]byte(body.Messages[1].Content), &input) != nil {
+		t.Error("invalid evidence")
+		w.WriteHeader(500)
+		return true
+	}
+	text := "В материалах команды нет описания. Что означает это название и что вы хотите узнать?"
+	refs := []string{}
+	if len(input.Evidence.Search.Hits) > 0 {
+		text = input.Evidence.Search.Hits[0].Excerpt
+		refs = append(refs, input.Evidence.Search.Hits[0].Reference)
+	}
+	if len(input.Evidence.Observations) > 0 {
+		text += "\nMock-проверки: " + strings.Join(input.Evidence.Observations, " ")
+	}
+	modelCall(w, "answer_from_knowledge", map[string]any{"text": text, "source_references": refs})
+	return true
+}
+
+func TestLiveUnknownAccessTargetSearchesOriginalQuestion(t *testing.T) {
 	_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		modelCall(w, "find_team_help", map[string]string{"kind": "escalation", "target_id": ""})
+		if answerKnowledgeForTest(t, w, r) {
+			return
+		}
+		modelCall(w, "find_team_help", map[string]string{"kind": "access", "target_id": "invented-resource-id"})
 	})
 	client := sessionClient(t)
-	operation := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "premature", map[string]string{"text": "Не могу запустить orders: 502"}))
-	if operation.State != "SUCCEEDED" || operation.Result.Messages[1].MentorDraft != "" || operation.Result.Messages[1].Help.Investigation == nil {
-		t.Fatalf("model bypassed search-first policy: %+v", operation)
+	question := "Как получить доступ к GITLAB CI CD?"
+	operation := waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", "unknown-access", map[string]string{"text": question}))
+	if operation.State != "SUCCEEDED" {
+		t.Fatalf("unknown access became error: %+v", operation)
 	}
+	message := operation.Result.Messages[1]
+	if message.Help.Investigation == nil || message.Help.Investigation.Search.Query != question || message.Help.Investigation.Purpose != "access" || message.Receipt != nil {
+		t.Fatalf("fabricated resource wasn't replaced with grounded search: %+v", message)
+	}
+}
+
+func TestEveryLiveMessageSearchesBeforeModelAndUnknownAccessCanEscalate(t *testing.T) {
+	knowledge := &trackingKnowledge{}
+	var modelCalls atomic.Int32
+	_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if knowledge.calls.Load() == 0 {
+			t.Error("model called before mandatory search")
+		}
+		modelCalls.Add(1)
+		modelCall(w, "answer_question", map[string]any{"text": "Привет! Чем помочь?", "document_ids": []string{}, "mentor_draft": ""})
+	}, knowledge)
+	client := sessionClient(t)
+	run := func(key, text string) domain.Operation {
+		return waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", key, map[string]string{"text": text}))
+	}
+	greeting := run("mandatory-greeting", "Привет")
+	if greeting.State != "SUCCEEDED" || knowledge.calls.Load() != 1 || greeting.Result.Messages[1].Help.Investigation == nil {
+		t.Fatalf("greeting skipped search: %+v", greeting)
+	}
+	unknown := run("mandatory-unknown", "Как получить доступ к GITLAB CI CD?")
+	if unknown.State != "SUCCEEDED" || knowledge.calls.Load() != 2 || modelCalls.Load() != 1 || !unknown.Result.Messages[1].Help.EscalationOffered || unknown.Result.Messages[1].MentorDraft != "" {
+		t.Fatalf("unknown access failed or called model unnecessarily: %+v", unknown)
+	}
+	yes := run("mandatory-confirm", "Да")
+	if yes.State != "SUCCEEDED" || knowledge.calls.Load() != 3 || modelCalls.Load() != 1 || !strings.Contains(yes.Result.Messages[1].MentorDraft, "GITLAB CI CD") || !strings.Contains(yes.Result.Messages[1].MentorDraft, "Подходящих разделов не найдено") {
+		t.Fatalf("confirmation lost original question: %+v", yes)
+	}
+}
+
+type trackingKnowledge struct{ calls atomic.Int32 }
+
+func (k *trackingKnowledge) Search(ctx context.Context, actor, query string) (domain.KnowledgeSearch, error) {
+	k.calls.Add(1)
+	team, err := teamconfig.New("../../../..").Load()
+	if err != nil {
+		return domain.KnowledgeSearch{}, err
+	}
+	return mcpknowledge.Search(team, query), nil
 }

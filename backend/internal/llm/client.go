@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -104,19 +106,58 @@ func failure(code string, retryable bool) error {
 	}[code], Retryable: retryable}
 }
 
+// reason is an application constant, never provider content or a parsing error.
+func invalidResult(reason string) error {
+	slog.Warn("LLM result rejected", "reason", reason)
+	return &domain.AppError{Code: "LLM_INVALID_RESULT", Message: "Модель вернула некорректный технический ответ. Повторите запрос.", Retryable: true, Reason: reason}
+}
+
+func unavailable(reason string) error {
+	problem := failure("LLM_UNAVAILABLE", true).(*domain.AppError)
+	problem.Reason = reason
+	slog.Warn("LLM provider unavailable", "reason", reason)
+	return problem
+}
+
 // choose accepts exactly one declared function call. It never executes model text.
 func (client *Client) choose(ctx context.Context, policy string, input any, tools []Tool) (toolCall, error) {
+	budget, cancel := context.WithTimeout(ctx, client.config.Timeout)
+	defer cancel()
+	call, err := client.chooseOnce(budget, policy, input, tools)
+	var problem *domain.AppError
+	if errors.As(err, &problem) && problem.Code == "LLM_INVALID_RESULT" && problem.Reason == "tool_required" && budget.Err() == nil {
+		// No tool has executed yet. Retry the original input once; never promote
+		// unvalidated model prose into an answer or replay an executed action.
+		slog.Info("retrying LLM output format", "reason", problem.Reason)
+		call, err = client.chooseOnce(budget, policy+"\nИсправь формат: предыдущая попытка не вернула вызов функции. Вызови ровно одну из предоставленных функций с аргументами по её JSON Schema. Не отвечай обычным текстом, не описывай вызов в Markdown и не добавляй новых функций.", input, tools)
+	}
+	if ctx.Err() != nil {
+		return toolCall{}, ctx.Err()
+	}
+	if budget.Err() != nil {
+		return toolCall{}, failure("LLM_TIMEOUT", true)
+	}
+	return call, err
+}
+
+func (client *Client) chooseOnce(ctx context.Context, policy string, input any, tools []Tool) (toolCall, error) {
 	var empty toolCall
 	data, err := json.Marshal(input)
 	if err != nil {
 		return empty, err
 	}
-	payload, err := json.Marshal(map[string]any{
+
+	var choice any = "required"
+	if len(tools) == 1 {
+		choice = map[string]any{"type": "function", "function": map[string]string{"name": tools[0].Function.Name}}
+	}
+	parameters := map[string]any{
 		"model":    client.config.Model,
 		"messages": []map[string]string{{"role": "system", "content": policy}, {"role": "user", "content": string(data)}},
-		"tools":    tools, "tool_choice": "required", "parallel_tool_calls": false,
-		"max_completion_tokens": 4096,
-	})
+		"tools":    tools, "tool_choice": choice, "parallel_tool_calls": false, "max_completion_tokens": 4096,
+	}
+
+	payload, err := json.Marshal(parameters)
 	if err != nil {
 		return empty, err
 	}
@@ -137,41 +178,62 @@ func (client *Client) choose(ctx context.Context, policy string, input any, tool
 		if timeout, ok := err.(interface{ Timeout() bool }); ok && timeout.Timeout() {
 			return empty, failure("LLM_TIMEOUT", true)
 		}
-		return empty, failure("LLM_UNAVAILABLE", true)
+		return empty, unavailable("network")
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		// Provider bodies may echo credentials or prompts: never expose or log them.
-		if response.StatusCode == 429 || response.StatusCode == 408 || response.StatusCode >= 500 {
-			return empty, failure("LLM_UNAVAILABLE", true)
+		// Status codes are safe to log; provider bodies may contain sensitive data.
+		slog.Warn("LLM HTTP request rejected", "status", response.StatusCode)
+		if response.StatusCode == 429 {
+			return empty, unavailable("rate_limit")
+		}
+		if response.StatusCode == 408 || response.StatusCode >= 500 {
+			return empty, unavailable("provider_error")
 		}
 		return empty, failure("LLM_CONFIGURATION", false)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 512*1024+1))
 	if err != nil {
-		return empty, failure("LLM_UNAVAILABLE", true)
+		return empty, unavailable("response_read")
 	}
+
 	var result completion
-	if len(body) > 512*1024 || json.Unmarshal(body, &result) != nil || len(result.Choices) != 1 || result.Choices[0].FinishReason != "tool_calls" || len(result.Choices[0].Message.ToolCalls) != 1 {
-		return empty, failure("LLM_INVALID_RESULT", true)
+	if len(body) > 512*1024 {
+		return empty, invalidResult("response_too_large")
+	}
+	if json.Unmarshal(body, &result) != nil {
+		return empty, invalidResult("response_json")
+	}
+	if len(result.Choices) != 1 {
+		return empty, invalidResult("response_shape")
+	}
+	if result.Choices[0].FinishReason == "length" {
+		return empty, invalidResult("truncated")
+	}
+	if result.Choices[0].FinishReason != "tool_calls" {
+		return empty, invalidResult("tool_required")
+	}
+	if len(result.Choices[0].Message.ToolCalls) != 1 {
+		return empty, invalidResult("tool_call_count")
 	}
 	call := result.Choices[0].Message.ToolCalls[0]
 	if call.Type != "function" || call.ID == "" {
-		return empty, failure("LLM_INVALID_RESULT", true)
+		return empty, invalidResult("tool_call_shape")
 	}
 	for _, allowed := range tools {
 		if call.Function.Name == allowed.Function.Name {
 			return call, nil
 		}
 	}
-	return empty, failure("LLM_INVALID_RESULT", true)
+	return empty, invalidResult("tool_not_allowed")
 }
 
 func decode(data string, output any) error {
 	decoder := json.NewDecoder(strings.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(output) != nil || decoder.Decode(new(any)) != io.EOF {
-		return failure("LLM_INVALID_RESULT", true)
+		return invalidResult("arguments_json")
 	}
 	return nil
 }

@@ -133,14 +133,14 @@ CI получен из mock Git. В ci_summary объясни конкретны
 		return domain.ReviewAnalysis{}, err
 	}
 	if len(output.Findings) > 200 || strings.TrimSpace(output.Scope) == "" || strings.TrimSpace(output.Task) == "" || strings.TrimSpace(output.CI) == "" {
-		return domain.ReviewAnalysis{}, failure("LLM_INVALID_RESULT", true)
+		return domain.ReviewAnalysis{}, invalidResult("review_fields")
 	}
 	analysis := domain.ReviewAnalysis{Findings: []domain.Finding{}, Assessment: domain.ReviewAssessment{
 		Scope: output.Scope + " Сборку и тесты PR агент не запускал. Источник CI — mock Git.", Task: output.Task, CI: output.CI, SuggestedTests: output.SuggestedTests,
 	}}
 	for index, item := range output.Findings {
 		if (item.Path == "") != (item.Line == 0) || item.Line < 0 {
-			return domain.ReviewAnalysis{}, failure("LLM_INVALID_RESULT", true)
+			return domain.ReviewAnalysis{}, invalidResult("finding_location")
 		}
 		finding := domain.Finding{ID: fmt.Sprintf("F%d", index+1), Kind: item.Kind, Title: item.Title, Description: item.Description}
 		if item.Path != "" {
@@ -149,7 +149,7 @@ CI получен из mock Git. В ci_summary объясни конкретны
 		if item.RuleID != "" {
 			rule, ok := team.Rules[item.RuleID]
 			if !ok {
-				return domain.ReviewAnalysis{}, failure("LLM_INVALID_RESULT", true)
+				return domain.ReviewAnalysis{}, invalidResult("unknown_rule")
 			}
 			finding.Rule = &rule
 		}

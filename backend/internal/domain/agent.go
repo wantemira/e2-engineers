@@ -7,14 +7,15 @@ type AssistantInfo struct {
 
 // AgentDecision permits read scenarios and synthetic CI; review requests require UI confirmation.
 type AgentDecision struct {
-	RunChecks bool
-	Tool      string
-	PRRef     string
-	SkillID   string
-	HelpKind  string
-	Query     string
-	TargetID  string
-	Message   Message
+	RunChecks     bool
+	Tool          string
+	PRRef         string
+	SkillID       string
+	HelpKind      string
+	Query         string
+	SearchPurpose string
+	TargetID      string
+	Message       Message
 }
 
 type AgentTrace struct {

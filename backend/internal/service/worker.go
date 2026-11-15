@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/teamhelp"
 )
 
 func (service *Service) signal() {
@@ -70,7 +71,7 @@ func (service *Service) runNext(ctx context.Context) (bool, error) {
 	return true, service.repository.Complete(operation)
 }
 
-func (service *Service) process(ctx context.Context, op domain.Job, state domain.Workspace) (domain.Result, error) {
+func (service *Service) process(ctx context.Context, op domain.Job, state domain.Workspace) (result domain.Result, processErr error) {
 	team, err := service.teams.Load()
 	if err != nil {
 		return domain.Result{}, fmt.Errorf("load team context: %w", err)
@@ -83,10 +84,78 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 	if actor == "" {
 		return domain.Result{}, domain.Problem("NOT_FOUND", "Сессия недоступна.")
 	}
+	var evidence *domain.Investigation
+	defer func() {
+		if processErr != nil || evidence == nil {
+			return
+		}
+		for i := range result.Messages {
+			m := &result.Messages[i]
+			if m.Role != "assistant" {
+				continue
+			}
+			if m.Help == nil {
+				m.Help = teamhelp.Trace(team, "search", "")
+			}
+			if m.Help.Investigation == nil {
+				m.Help.Investigation = evidence
+			}
+		}
+	}()
 	switch op.Command.Kind {
 	case "message":
+		history := state.Messages
+		if len(history) > 20 {
+			history = history[len(history)-20:]
+		}
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		// In the configured application every message searches before routing or LLM.
+		// The optional port preserves legacy consumers without the help integration.
+		if teamhelp.Enabled(team) && service.knowledge != nil {
+			purpose := "information"
+			if teamhelp.IsAccessQuestion(input.Text) {
+				purpose = "access"
+			}
+			query := input.Text
+			lower := strings.ToLower(input.Text)
+			if containsAny(lower, "не помогло", "всё равно", "все равно", "ошибка осталась", "уже пробовал", "уже проверил") && !containsAny(lower, "не могу", "не получается") {
+				for i := len(history) - 1; i >= 0; i-- {
+					m := history[i]
+					if m.Role == "assistant" {
+						if m.Help != nil && m.Help.Investigation != nil {
+							query = m.Help.Investigation.Search.Query + "\n" + input.Text
+							purpose = m.Help.Investigation.Purpose
+						}
+						break
+					}
+				}
+			}
+			evidence, err = service.searchEvidence(ctx, actor, input, query, purpose)
+			if err != nil {
+				return domain.Result{}, err
+			}
+			input.Knowledge = evidence
+			var message domain.Message
+			handled := false
+			if teamhelp.WantsEscalation(input.Text) || teamhelp.AcceptsEscalation(input) {
+				message = teamhelp.Escalate(input)
+				handled = true
+			} else if len(evidence.Search.Hits) == 0 {
+				lower := strings.ToLower(strings.TrimSpace(input.Text))
+				knownAction := referenceInMessage(input.Text) != "" || wantsCheckRun(lower) || (team.Training != nil && trainingQuestion(lower))
+				reviewFollowup := current != nil && (containsAny(lower, "замечан", "пункт", "перепроверь", "повторная проверка") || lower == "почему?" || lower == "объясни" || lower == "подробнее")
+				if !teamhelp.IsSocialMessage(input.Text) && !knownAction && !reviewFollowup {
+					message = teamhelp.MissingKnowledge(input)
+					handled = true
+				}
+			}
+			if handled {
+				message.ID = "assistant_" + op.Operation.ID
+				return domain.Result{Messages: []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}}, nil
+			}
+		}
 		if agent, ok := service.assistant.(Agent); ok {
-			return service.agentMessage(ctx, agent, actor, team, op, state, current)
+			return service.agentMessage(ctx, agent, actor, team, op, state, current, evidence)
 		}
 		text := strings.ToLower(op.Command.Text)
 		ref := referenceInMessage(op.Command.Text)
@@ -113,11 +182,6 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 		if skill := matchingMessageSkill(team, text); skill != nil {
 			return service.skillMessage(ctx, actor, *skill, op)
 		}
-		history := state.Messages
-		if len(history) > 20 {
-			history = history[len(history)-20:]
-		}
-		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
 		message, err := service.assistant.Answer(ctx, input)
 		if err == nil && message.Help != nil && message.Help.Kind == "search" {
 			message, err = service.investigate(ctx, actor, input, op.Command.Text)

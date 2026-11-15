@@ -134,6 +134,12 @@ func Answer(input domain.ChatInput) domain.Message {
 		}
 		return SearchRequest(input)
 	}
+	for _, resource := range input.Team.Help.Access {
+		if mentions(text, append([]string{resource.Name}, resource.Aliases...)) {
+			message, _ := Document(input.Team, resource.DocumentID+"#"+resource.Section)
+			return message
+		}
+	}
 	best, selected := 0, ""
 	for _, route := range input.Team.Help.Assistants {
 		if value := score(text, route.Keywords); value > best {
@@ -192,5 +198,39 @@ func SearchRequest(input domain.ChatInput) domain.Message {
 // Escalation requires the user's intent; an unknown question alone is not consent.
 func WantsEscalation(text string) bool {
 	text = strings.ToLower(text)
-	return contains(text, "наставник", "ментор") && contains(text, "подготовь вопрос", "подготовь обращение", "подготовь сообщение", "подготовить вопрос", "черновик", "сформируй", "обратиться")
+	return contains(text, "наставник", "ментор") && contains(text, "подготов", "состав", "напиш", "написать", "черновик", "сформир", "обратиться") && !contains(text, "как подготов", "как состав", "как напис", "не надо", "не нужно")
+}
+
+func IsAccessQuestion(text string) bool {
+	return contains(strings.ToLower(text), "доступ", "access", "permission")
+}
+
+func MissingKnowledge(input domain.ChatInput) domain.Message {
+	trace := Trace(input.Team, "not_found", "")
+	trace.Investigation = input.Knowledge
+	trace.EscalationOffered = true
+	text := "В доступных материалах команды не нашёл ответа по вашему запросу: «" + input.Text + "». Могу подготовить вопрос наставнику с вашим запросом и результатом поиска. Подготовить?"
+	if input.Knowledge != nil && input.Knowledge.Purpose == "access" {
+		text = "В доступных материалах команды не нашёл инструкции по вашему запросу: «" + input.Text + "». Не могу подтвердить порядок получения доступа. Могу подготовить вопрос наставнику с вашим запросом и результатом поиска. Подготовить?"
+	}
+	return domain.Message{Role: "assistant", Text: text, Help: trace}
+}
+
+func AcceptsEscalation(input domain.ChatInput) bool {
+	text := strings.Trim(strings.ToLower(strings.TrimSpace(input.Text)), ".!? ")
+	if text != "да" && text != "давай" && text != "да, давай" && text != "подготовь" && text != "давай напишем" {
+		return false
+	}
+	for i := len(input.History) - 1; i >= 0; i-- {
+		m := input.History[i]
+		if m.Role == "assistant" {
+			return m.Help != nil && m.Help.EscalationOffered
+		}
+	}
+	return false
+}
+
+func IsSocialMessage(text string) bool {
+	text = strings.Trim(strings.ToLower(strings.TrimSpace(text)), ".!? ")
+	return text == "что умеешь" || text == "что ты умеешь" || text == "помоги" || text == "помощь" || text == "привет" || text == "здравствуйте" || text == "здарова" || text == "спасибо" || text == "ок" || text == "окей" || text == "понятно" || text == "пока" || text == "да" || text == "нет"
 }

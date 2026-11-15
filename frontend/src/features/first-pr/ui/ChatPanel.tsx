@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Button } from "../../../components/Button";
 import { SafeLink } from "../../../components/SafeLink";
+import { MarkdownMessage } from "../../../components/MarkdownMessage";
 import type { BuddyError, BusyState, ChatMessage } from "../types";
 import styles from "./ChatPanel.module.css";
 
@@ -180,7 +181,7 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
       {message.text && (
         <>
           <span className={styles.author}>AI-Buddy</span>
-          <p>{message.text}</p>
+          <MarkdownMessage text={message.text} />
         </>
       )}
       {message.links && (

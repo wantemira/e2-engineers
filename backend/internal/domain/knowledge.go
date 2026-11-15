@@ -12,6 +12,8 @@ type KnowledgeSearch struct {
 	Hits  []KnowledgeHit `json:"hits"`
 }
 type Investigation struct {
+	Question     string          `json:"question,omitempty"`
+	Purpose      string          `json:"purpose,omitempty"`
 	Search       KnowledgeSearch `json:"search"`
 	Observations []string        `json:"observations"`
 	CheckedAt    string          `json:"checked_at"`

@@ -57,7 +57,7 @@ test("первая линия: документы, доступы и разны�
   }
   await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
   await send(page, "Как получить доступ к Kubernetes?");
-  await expect(log.getByText(/Поиск по материалам демо-команды не нашёл/)).toBeVisible();
+  await expect(log.getByText(/В доступных материалах команды не нашёл инструкции/)).toBeVisible();
   await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
   await send(page, "Подготовь вопрос наставнику");
   await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveValue(/Kubernetes/);
@@ -325,7 +325,8 @@ test("действия в чате и повтор загрузки истори
   await expect(log.getByRole("link", { name: "Профиль: HR-помощник (демо)" })).toHaveAttribute("href", "/api/v1/context/documents/assistant-directory#section-1");
 
   await send(page, "Не могу запустить orders: получаю 502, уже пробовал перезапуск Docker");
-  await expect(log.getByText(/Что проверил Buddy/)).toContainText("STOPPED");
+  await expect(log.getByText(/Что проверил Buddy/)).toBeVisible();
+  await expect(log.getByText(/Окружение orders-training/).last()).toContainText("STOPPED");
   await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
   await send(page, "Не помогло");
   await expect(log.getByText(/Предыдущая рекомендация не помогла/)).toBeVisible();
@@ -455,8 +456,8 @@ test("показывает учебное окружение, команды и 
     const initial = log.getByText(/Учебный сервис — orders-training/);
     await expect(initial).toContainText("статус STOPPED");
     await expect(initial).toContainText("Источник состояния окружения и CI — mock-инструменты");
-    await expect(initial).toContainText("make training-up");
-    await expect(initial).toContainText("make training-test");
+    await expect(log.getByText(/Запуск сервиса: make training-up/)).toBeVisible();
+    await expect(log.getByText(/Локальные тесты: make training-test/)).toBeVisible();
     await expect(initial).toContainText("a13d9c2");
     const guide = log.getByRole("link", { name: "Учебный сервис и тестовое окружение" });
     await expect(guide).toHaveAttribute("href", "/api/v1/context/documents/environment-guide");
@@ -471,7 +472,7 @@ test("показывает учебное окружение, команды и 
     const checked = log.getByText(/CI — FAILED/).filter({ hasText: "c84be19" });
     await expect(checked).toContainText("статус READY");
     await expect(checked).toContainText("c84be19");
-    await expect(checked).toContainText("Разберите ошибку CI");
+    await expect(log.getByText(/Следующий шаг — Разберите ошибку CI/)).toBeVisible();
     await page.reload();
     await expect(checked).toBeVisible();
     await expect(log.getByText(/статус STOPPED/)).toBeVisible();

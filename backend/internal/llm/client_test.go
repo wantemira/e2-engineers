@@ -165,3 +165,114 @@ func TestTimeoutCancellationAndRedirect(t *testing.T) {
 		t.Fatalf("redirect=%v", err)
 	}
 }
+
+func TestInvalidCompletionHasSafeDiagnosticReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, finish, reason string
+		count                int
+	}{
+		{"truncated", "length", "truncated", 0},
+		{"plain text", "stop", "tool_required", 0},
+		{"multiple calls", "tool_calls", "tool_call_count", 2},
+		{"missing call", "tool_calls", "tool_call_count", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				calls := []any{}
+				for i := 0; i < tc.count; i++ {
+					calls = append(calls, map[string]any{"id": "call", "type": "function", "function": map[string]string{"name": "answer_question", "arguments": "{}"}})
+				}
+				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"finish_reason": tc.finish, "message": map[string]any{"content": "SENSITIVE_PROVIDER_CONTENT", "tool_calls": calls}}}})
+			})
+			_, err := client.Plan(context.Background(), domain.ChatInput{})
+			problem := domain.PublicError(err)
+			data, _ := json.Marshal(problem)
+			if err == nil || problem.Code != "LLM_INVALID_RESULT" || problem.Reason != tc.reason || !problem.Retryable || strings.Contains(string(data), "SENSITIVE") {
+				t.Fatalf("unsafe or missing reason: %s", data)
+			}
+		})
+	}
+}
+
+func TestPlainTextGetsOneFormatRepairBeforeAnyToolExecutes(t *testing.T) {
+	for _, scenario := range []string{"repaired", "still text", "forbidden tool", "invalid arguments"} {
+		t.Run(scenario, func(t *testing.T) {
+			attempts := 0
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				var body struct {
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+				}
+				json.NewDecoder(r.Body).Decode(&body)
+				if attempts == 1 || scenario == "still text" {
+					json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": "UNVALIDATED: права уже выданы"}}}})
+					return
+				}
+				if !strings.Contains(body.Messages[0].Content, "Исправь формат") || strings.Contains(body.Messages[0].Content, "UNVALIDATED") {
+					t.Error("repair lost constraints or promoted model prose")
+				}
+				switch scenario {
+				case "forbidden tool":
+					writeCall(w, "send_review", `{}`)
+				case "invalid arguments":
+					writeCall(w, "answer_question", `{"text":"OK","document_ids":["secret"],"mentor_draft":""}`)
+				default:
+					writeCall(w, "answer_question", `{"text":"Уточните ресурс.","document_ids":[],"mentor_draft":""}`)
+				}
+			})
+			decision, err := client.Plan(context.Background(), domain.ChatInput{Text: "Как получить доступ к GitLab CI CD?"})
+			if attempts != 2 {
+				t.Fatalf("unbounded or missing recovery: %d", attempts)
+			}
+			if scenario == "repaired" {
+				if err != nil || decision.Tool != "answer_question" || strings.Contains(decision.Message.Text, "выданы") {
+					t.Fatalf("repair failed: %+v %v", decision, err)
+				}
+			} else if err == nil {
+				t.Fatal("invalid recovery accepted")
+			}
+		})
+	}
+}
+func TestSingleToolIsForcedByName(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Choice struct {
+				Type     string `json:"type"`
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			} `json:"tool_choice"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body.Choice.Type != "function" || body.Choice.Function.Name != "answer_from_knowledge" {
+			t.Error("single tool wasn't forced by name")
+		}
+		writeCall(w, "answer_from_knowledge", `{"text":"Уточните название ресурса.","source_references":[]}`)
+	})
+	_, err := client.AnswerFromKnowledge(context.Background(), domain.ChatInput{}, domain.Investigation{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+func TestProviderFailureReasons(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		reason string
+	}{{429, "rate_limit"}, {503, "provider_error"}} {
+		t.Run(tc.reason, func(t *testing.T) {
+			attempts := 0
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				w.WriteHeader(tc.status)
+				w.Write([]byte("SECRET_PROVIDER_BODY"))
+			})
+			_, err := client.Plan(context.Background(), domain.ChatInput{})
+			problem := domain.PublicError(err)
+			if attempts != 1 || problem.Reason != tc.reason || problem.Code != "LLM_UNAVAILABLE" || strings.Contains(problem.Message, "SECRET") {
+				t.Fatalf("incorrect error or retry: %+v", problem)
+			}
+		})
+	}
+}

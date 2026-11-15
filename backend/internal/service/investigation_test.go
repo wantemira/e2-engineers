@@ -136,3 +136,15 @@ func TestInvestigationDoesNotTreatOutageOrStaleSnapshotAsNoResults(t *testing.T)
 		})
 	}
 }
+
+func TestInformationQuestionDoesNotAskForErrorsOrReadDiagnostics(t *testing.T) {
+	team := helpTeam(t)
+	git := &diagnosticGit{}
+	app := Service{git: git, knowledge: knowledgeStub{team: team}}
+	for _, query := range []string{"обсервер", "Что такое orders?"} {
+		message, err := app.investigate(context.Background(), "intern-1", domain.ChatInput{Team: team, Text: query}, query, "information")
+		if err != nil || git.reads != 0 || strings.Contains(message.Text, "точный текст ошибки") || strings.Contains(message.Text, "Что проверил Buddy") {
+			t.Fatalf("information became diagnosis: %+v %v", message, err)
+		}
+	}
+}

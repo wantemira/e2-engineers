@@ -59,3 +59,18 @@ func TestMCPKnowledgeRequiresAuthenticationAndAuthorizedActor(t *testing.T) {
 		}
 	}
 }
+
+func TestGenericCISectionsDoNotAnswerUnknownProductAccess(t *testing.T) {
+	team, err := teamconfig.New("../../../..").Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, question := range []string{"Как получить доступ к GitLab CI CD?", "Нужен доступ к UnknownProduct CI"} {
+		if hits := mcpknowledge.Search(team, question).Hits; len(hits) != 0 {
+			t.Fatalf("generic CI matched unknown product: %+v", hits)
+		}
+	}
+	if len(mcpknowledge.Search(team, "про графану что знаешь?").Hits) == 0 {
+		t.Fatal("configured alias was not searched")
+	}
+}

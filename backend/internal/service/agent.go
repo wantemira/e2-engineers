@@ -13,12 +13,12 @@ type Agent interface {
 	Info() domain.AssistantInfo
 }
 
-func (service *Service) agentMessage(ctx context.Context, agent Agent, actor string, team domain.Team, op domain.Job, state domain.Workspace, current *domain.ReviewRun) (domain.Result, error) {
+func (service *Service) agentMessage(ctx context.Context, agent Agent, actor string, team domain.Team, op domain.Job, state domain.Workspace, current *domain.ReviewRun, evidence *domain.Investigation) (domain.Result, error) {
 	history := state.Messages
 	if len(history) > 20 {
 		history = history[len(history)-20:]
 	}
-	decision, err := agent.Plan(ctx, domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team})
+	decision, err := agent.Plan(ctx, domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team, Knowledge: evidence})
 	if err != nil {
 		return domain.Result{}, err
 	}
@@ -29,13 +29,13 @@ func (service *Service) agentMessage(ctx context.Context, agent Agent, actor str
 		message.ID, message.Role = "assistant_"+op.Operation.ID, "assistant"
 		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
 	case "search_team_knowledge":
-		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team, Knowledge: evidence}
 		var message domain.Message
-		message, err = service.investigate(ctx, actor, input, decision.Query)
+		message, err = service.investigate(ctx, actor, input, decision.Query, decision.SearchPurpose)
 		message.ID = "assistant_" + op.Operation.ID
 		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
 	case "find_team_help":
-		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team, Knowledge: evidence}
 		if !teamhelp.Enabled(team) {
 			return domain.Result{}, domain.Problem("HELP_NOT_FOUND", "Помощь команды не настроена.")
 		}
@@ -46,12 +46,9 @@ func (service *Service) agentMessage(ctx context.Context, agent Agent, actor str
 		case "handoff":
 			message, err = teamhelp.Handoff(input, decision.TargetID)
 		case "escalation":
-			if teamhelp.WantsEscalation(input.Text) {
-				message = teamhelp.Escalate(input)
-			} else {
-				decision.Tool = "search_team_knowledge"
-				message, err = service.investigate(ctx, actor, input, input.Text)
-			}
+			// A draft is reversible and never sends a message. In Live the model
+			// interprets intent; a second keyword gate must not veto its decision.
+			message = teamhelp.Escalate(input)
 		default:
 			return domain.Result{}, domain.Problem("HELP_NOT_FOUND", "Неизвестный сценарий помощи.")
 		}
