@@ -125,6 +125,8 @@ export interface Workspace {
 
 function errorMessage(code: string): string {
   switch (code) {
+    case "HELP_NOT_FOUND":
+      return "Источник, ресурс или помощник не настроен для команды. Уточните запрос.";
     case "LLM_CONFIGURATION":
       return "Проверьте настройки модели и API-ключ на сервере.";
     case "LLM_TIMEOUT":

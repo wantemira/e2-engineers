@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/teamhelp"
 )
 
 type LocalAssistant struct{}
@@ -37,7 +38,7 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 			return reply(text), nil
 		}
 	}
-	if containsAny(text, "больнич", "болею", "заболел") {
+	if !teamhelp.Enabled(input.Team) && containsAny(text, "больнич", "болею", "заболел") {
 		message := documentAnswer(input.Team, "people-guide", "Больничный")
 		if input.Team.PeopleAgentURL != "" {
 			message.Text = "По порядку оформления больничного обратитесь к People-агенту."
@@ -47,10 +48,10 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 		}
 		return message, nil
 	}
-	if containsAny(text, "доступ", "permission", "access") {
+	if !teamhelp.Enabled(input.Team) && containsAny(text, "доступ", "permission", "access") {
 		return documentAnswer(input.Team, "access-guide", "Доступ к инструменту"), nil
 	}
-	if containsAny(text, "наставник", "ментор", "buddy", "кому обратиться", "не получается", "не могу") {
+	if !teamhelp.Enabled(input.Team) && containsAny(text, "наставник", "ментор", "buddy", "кому обратиться", "не получается", "не могу") {
 		message := reply(fmt.Sprintf("С этим вопросом может помочь ваш наставник — %s. Заполните поля в черновике перед отправкой.", input.Team.Mentor.Name))
 		message.Links = []domain.SourceLink{documentLink(input.Team, "context")}
 		message.MentorDraft = "Привет! Нужна помощь с [задача или ссылка на PR]. Ожидаю [результат], сейчас получаю [ошибка или фактический результат]. Уже проверил(а) [что пробовали]. Подскажешь следующий шаг?"
@@ -79,6 +80,9 @@ func (*LocalAssistant) Answer(ctx context.Context, input domain.ChatInput) (doma
 		}
 	}
 
+	if teamhelp.Enabled(input.Team) {
+		return teamhelp.Answer(input), nil
+	}
 	switch {
 	case containsAny(text, "%w", "обработк", "причин", "errors.is", "errors.as", "обернуть", "оборачива"):
 		return documentAnswer(input.Team, "review-rules", "GO-ERR-01"), nil

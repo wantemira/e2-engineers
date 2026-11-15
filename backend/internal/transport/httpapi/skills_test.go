@@ -57,7 +57,7 @@ func TestAdditionalSkillNeedsOnlyFilesAndConfiguration(t *testing.T) {
 	if err := json.Unmarshal(data, &team); err != nil {
 		t.Fatal(err)
 	}
-	team["skills"] = []string{"pr-self-review", "mentor-handoff"}
+	team["skills"] = append(team["skills"].([]any), "mentor-handoff")
 	writeJSON(configuration, team)
 	directory := filepath.Join(root, "skills", "mentor-handoff")
 	if err := os.MkdirAll(directory, 0700); err != nil {

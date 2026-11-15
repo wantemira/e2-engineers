@@ -16,6 +16,7 @@ type SourceLink struct {
 }
 
 type Message struct {
+	Help        *HelpTrace      `json:"help_execution,omitempty"`
 	Agent       *AgentTrace     `json:"agent,omitempty"`
 	Skill       *SkillExecution `json:"skill_execution,omitempty"`
 	ID          string          `json:"id"`
@@ -134,6 +135,7 @@ type TrainingEnvironment struct {
 }
 
 type Team struct {
+	Help           *HelpCatalog      `json:"help,omitempty"`
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
 	Repository     string            `json:"repository"`

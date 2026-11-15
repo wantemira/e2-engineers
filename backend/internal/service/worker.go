@@ -117,7 +117,11 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 		if len(history) > 20 {
 			history = history[len(history)-20:]
 		}
-		message, err := service.assistant.Answer(ctx, domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team})
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		message, err := service.assistant.Answer(ctx, input)
+		if err == nil && message.Help != nil && message.Help.Kind == "search" {
+			message, err = service.investigate(ctx, actor, input, op.Command.Text)
+		}
 		if err != nil {
 			return domain.Result{}, err
 		}

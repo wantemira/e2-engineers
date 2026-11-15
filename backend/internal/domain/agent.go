@@ -11,6 +11,9 @@ type AgentDecision struct {
 	Tool      string
 	PRRef     string
 	SkillID   string
+	HelpKind  string
+	Query     string
+	TargetID  string
 	Message   Message
 }
 

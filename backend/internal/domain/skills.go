@@ -8,6 +8,7 @@ import (
 const (
 	ReviewSkillContract  = "pr-review.v1"
 	MessageSkillContract = "message.v1"
+	HelpSkillContract    = "team-help.v1"
 )
 
 type SkillRef struct {

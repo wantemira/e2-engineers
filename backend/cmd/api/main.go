@@ -17,6 +17,7 @@ import (
 
 	"github.com/wantemira/e2-engineers/backend/internal/assistant"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpknowledge"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpskills"
 	"github.com/wantemira/e2-engineers/backend/internal/llm"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
@@ -86,6 +87,7 @@ func run() error {
 	internal := http.NewServeMux()
 	internal.Handle("/internal/mcp", gitHandler)
 	internal.Handle("/internal/skills", skillHandler)
+	internal.Handle("/internal/knowledge", mcpknowledge.NewHandler(secret, teams))
 	var skills service.SkillRunner = mcpskills.NewClient("http://"+endpoint.String()+"/internal/skills", secret)
 	var chat service.Assistant = localAssistant
 	mode := "demo"
@@ -94,7 +96,7 @@ func run() error {
 		skills = llm.NewRunner(model, git, teams, skills)
 		mode = "live"
 	}
-	app := service.NewService(store, git, chat, teams, skills)
+	app := service.NewService(store, git, chat, teams, skills, mcpknowledge.NewClient("http://"+endpoint.String()+"/internal/knowledge", secret))
 	origins := []string{"http://127.0.0.1:5173", "http://localhost:5173"}
 	if configured := os.Getenv("FRONTEND_ORIGIN"); configured != "" {
 		origins = []string{configured}

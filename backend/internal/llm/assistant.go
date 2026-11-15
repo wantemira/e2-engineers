@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/teamhelp"
 )
 
 const policy = `Ты AI-Buddy — первая линия помощи стажёру, уменьшающая повторные вопросы наставнику.
@@ -16,6 +17,11 @@ const policy = `Ты AI-Buddy — первая линия помощи стаж�
 Для просьбы проверить PR вызывай run_pr_self_review: backend загрузит skill и вызовет Git MCP. Если PR не указан, используй последний PR из текущего отчёта или уточни номер. Если пользователь просит запустить/перезапустить тесты, установи run_checks=true: mock CI будет запущен и проанализирован в том же self-review. Для обычного анализа без запуска — false.
 Для вопроса об окружении/статусе CI используй get_training_status, если training настроен. Для объяснения замечания ответь с учётом current_review, а не запускай проверку снова.
 People/доступы: используй источники команды, отсутствие адреса не заменяй выдуманным. В черновике наставнику отделяй известные факты от вопросов.`
+
+const helpPolicy = `Примени подключённый skill team-help. Для доступа или выбора профильного помощника используй find_team_help, выбирая ID только из каталога team.help.
+HR, отпуск и БД — примеры, не исчерпывающий список; используй описание каждого настроенного помощника. Не утверждай, что сообщение отправлено, API вызвано или права выданы.
+Ответ по документам давай через answer_question со ссылками document_ids вида document-id#Точный заголовок раздела. Не придумывай разделы и URL.
+Для неизвестной рабочей проблемы сначала вызови search_team_knowledge: backend найдёт источники и прочитает доступную mock-диагностику. Не утверждай, что поиск выполнен, до вызова инструмента. Для продолжения неудачной попытки повтори поиск с контекстом проблемы; не выдавай автоматически черновик. При просьбе подготовить обращение вызови find_team_help(kind=escalation,target_id=""). Черновик собирает backend; mentor_draft при прямом ответе оставляй пустым.`
 
 func (client *Client) Info() domain.AssistantInfo {
 	return domain.AssistantInfo{Mode: "live", Model: client.config.Model}
@@ -43,6 +49,14 @@ func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.
 	if input.Team.Training != nil {
 		tools = append(tools, tool("get_training_status", "Прочитать mock-статус окружения и CI для PR, без запуска кода.", map[string]any{"pr_ref": str()}))
 	}
+	currentPolicy := policy
+	if teamhelp.Enabled(input.Team) {
+		currentPolicy += "\n" + helpPolicy
+		tools = append(tools, tool("search_team_knowledge", "Найти сведения по рабочей проблеме в командных документах и прочитать доступную mock-диагностику. Только чтение.", map[string]any{"query": str()}))
+		tools = append(tools, tool("find_team_help", "Получить конкретную инструкцию доступа, handoff к настроенному помощнику или подготовить вопрос наставнику без отправки.", map[string]any{
+			"kind": map[string]any{"type": "string", "enum": []string{"access", "handoff", "escalation"}}, "target_id": str(),
+		}))
+	}
 	for _, skill := range input.Team.Skills {
 		if skill.Contract == domain.MessageSkillContract {
 			tools = append(tools, tool("execute_message_skill", "Вызвать подключённый информационный skill по skill_id из team.Skills.", map[string]any{"skill_id": str()}))
@@ -55,7 +69,7 @@ func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.
 	for _, skill := range input.Team.Skills {
 		skills = append(skills, skillContext{skill.ID, skill.Description, skill.Instructions})
 	}
-	call, err := client.choose(ctx, policy, map[string]any{
+	call, err := client.choose(ctx, currentPolicy, map[string]any{
 		"question": input.Text, "history": input.History, "current_review": input.CurrentReview,
 		"team": input.Team, "skill_instructions": skills,
 	}, tools)
@@ -64,6 +78,29 @@ func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.
 	}
 	decision.Tool = call.Function.Name
 	switch decision.Tool {
+	case "search_team_knowledge":
+		var args struct {
+			Query string `json:"query"`
+		}
+		if err := decode(call.Function.Arguments, &args); err != nil {
+			return decision, err
+		}
+		if !teamhelp.Enabled(input.Team) || strings.TrimSpace(args.Query) == "" || len([]rune(args.Query)) > 2000 {
+			return decision, failure("LLM_INVALID_RESULT", true)
+		}
+		decision.Query = args.Query
+	case "find_team_help":
+		var args struct {
+			Kind     string `json:"kind"`
+			TargetID string `json:"target_id"`
+		}
+		if err := decode(call.Function.Arguments, &args); err != nil {
+			return decision, err
+		}
+		if !teamhelp.Enabled(input.Team) || !containsHelpTarget(input.Team, args.Kind, args.TargetID) {
+			return decision, failure("LLM_INVALID_RESULT", true)
+		}
+		decision.HelpKind, decision.TargetID = args.Kind, args.TargetID
 	case "run_pr_self_review", "get_training_status":
 		var args struct {
 			PRRef     string `json:"pr_ref"`
@@ -111,20 +148,43 @@ func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.
 			return decision, failure("LLM_INVALID_RESULT", true)
 		}
 		message := domain.Message{Role: "assistant", Text: args.Text, MentorDraft: args.MentorDraft}
+		if teamhelp.Enabled(input.Team) && args.MentorDraft != "" {
+			decision.Tool = "find_team_help"
+			decision.HelpKind = "escalation"
+			return decision, nil
+		}
 		for _, id := range args.DocumentIDs {
-			found := false
-			for _, document := range input.Team.Documents {
-				if document.ID == id {
-					message.Links = append(message.Links, domain.SourceLink{Label: document.Title, URL: "/api/v1/context/documents/" + id})
-					found = true
-					break
-				}
-			}
+			link, _, found := domain.DocumentSource(input.Team, id)
 			if !found {
 				return decision, failure("LLM_INVALID_RESULT", true)
 			}
+			message.Links = append(message.Links, link)
 		}
 		decision.Message = message
+		if teamhelp.Enabled(input.Team) {
+			decision.Message.Help = teamhelp.Trace(input.Team, "docs", strings.Join(args.DocumentIDs, ","))
+		}
 	}
 	return decision, nil
+}
+
+func containsHelpTarget(team domain.Team, kind, id string) bool {
+	if kind == "escalation" {
+		return id == ""
+	}
+	if kind == "access" {
+		for _, resource := range team.Help.Access {
+			if resource.ID == id {
+				return true
+			}
+		}
+	}
+	if kind == "handoff" {
+		for _, route := range team.Help.Assistants {
+			if route.ID == id {
+				return true
+			}
+		}
+	}
+	return false
 }

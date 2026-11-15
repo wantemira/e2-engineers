@@ -17,10 +17,15 @@ type Service struct {
 	skills     SkillRunner
 	teams      TeamLoader
 	wake       chan struct{}
+	knowledge  KnowledgeTools
 }
 
-func NewService(repository Repository, git GitTools, assistant Assistant, teams TeamLoader, skills SkillRunner) *Service {
-	return &Service{repository: repository, git: git, assistant: assistant, teams: teams, skills: skills, wake: make(chan struct{}, 1)}
+func NewService(repository Repository, git GitTools, assistant Assistant, teams TeamLoader, skills SkillRunner, knowledge ...KnowledgeTools) *Service {
+	app := &Service{repository: repository, git: git, assistant: assistant, teams: teams, skills: skills, wake: make(chan struct{}, 1)}
+	if len(knowledge) > 0 {
+		app.knowledge = knowledge[0]
+	}
+	return app
 }
 
 func newID(prefix string) string {

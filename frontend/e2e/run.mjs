@@ -25,11 +25,6 @@ try {
   pr.current_revision = "initial";
   writeFileSync(fixture, JSON.stringify(pr));
 
-  const config = join(root, "teams", "demo-backend", "context.json");
-  const team = JSON.parse(readFileSync(config, "utf8"));
-  team.people_agent_url = "https://people.example.test/";
-  writeFileSync(config, JSON.stringify(team));
-
   const binary = join(root, process.platform === "win32" ? "api.exe" : "api");
   const demoBinary = join(root, process.platform === "win32" ? "demo.exe" : "demo");
   const build = await run("go", ["build", "-o", root, "./cmd/api", "./cmd/demo"], {

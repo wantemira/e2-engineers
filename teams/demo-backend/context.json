@@ -1,12 +1,21 @@
 {
   "id": "backend",
   "name": "Backend",
-  "skills": ["pr-self-review"],
-  "capabilities": { "pr_review": "pr-self-review" },
+  "skills": [
+    "pr-self-review",
+    "team-help"
+  ],
+  "capabilities": {
+    "pr_review": "pr-self-review",
+    "team_help": "team-help"
+  },
   "repository": "e2-engineers",
   "repository_url": "https://github.com/wantemira/e2-engineers",
   "pr_number": 17,
-  "mentor": { "id": "mentor-backend", "name": "Алексей, Backend" },
+  "mentor": {
+    "id": "mentor-backend",
+    "name": "Алексей, Backend"
+  },
   "training": {
     "service": "orders-training",
     "environment": "training",
@@ -15,17 +24,208 @@
     "test_command": "make training-test"
   },
   "documents": [
-    { "id": "context", "title": "Контекст Backend-команды", "file": "context.md" },
-    { "id": "review-rules", "title": "Правила разработки и ревью", "file": "review-rules.md" },
-    { "id": "access-guide", "title": "Доступ к рабочим инструментам", "file": "access-guide.md" },
-    { "id": "people-guide", "title": "Организационные вопросы", "file": "people-guide.md" },
-    { "id": "environment-guide", "title": "Учебный сервис и тестовое окружение", "file": "environment-guide.md" }
+    {
+      "id": "context",
+      "title": "Контекст Backend-команды",
+      "file": "context.md"
+    },
+    {
+      "id": "review-rules",
+      "title": "Правила разработки и ревью",
+      "file": "review-rules.md"
+    },
+    {
+      "id": "access-guide",
+      "title": "Доступ к рабочим инструментам",
+      "file": "access-guide.md"
+    },
+    {
+      "id": "people-guide",
+      "title": "Организационные вопросы",
+      "file": "people-guide.md"
+    },
+    {
+      "id": "environment-guide",
+      "title": "Учебный сервис и тестовое окружение",
+      "file": "environment-guide.md"
+    },
+    {
+      "id": "process-guide",
+      "title": "Процессы демо-команды",
+      "file": "process-guide.md"
+    },
+    {
+      "id": "assistant-directory",
+      "title": "Каталог помощников (демо)",
+      "file": "assistant-directory.md"
+    },
+    {
+      "id": "troubleshooting",
+      "title": "Известные проблемы (демо)",
+      "file": "troubleshooting.md"
+    }
   ],
   "rules": {
-    "GO-ERR-01": { "id": "GO-ERR-01", "label": "Обработка ошибок", "url": "/api/v1/context/documents/review-rules#GO-ERR-01" },
-    "GO-TEST-01": { "id": "GO-TEST-01", "label": "Проверка изменённой логики", "url": "/api/v1/context/documents/review-rules#GO-TEST-01" },
-    "GO-FMT-01": { "id": "GO-FMT-01", "label": "Форматирование Go", "url": "/api/v1/context/documents/review-rules#GO-FMT-01" },
-    "GO-ERR-02": { "id": "GO-ERR-02", "label": "Возврат ошибки", "url": "/api/v1/context/documents/review-rules#GO-ERR-02" },
-    "GO-CTX-01": { "id": "GO-CTX-01", "label": "Отмена производного контекста", "url": "/api/v1/context/documents/review-rules#GO-CTX-01" }
+    "GO-ERR-01": {
+      "id": "GO-ERR-01",
+      "label": "Обработка ошибок",
+      "url": "/api/v1/context/documents/review-rules#GO-ERR-01"
+    },
+    "GO-TEST-01": {
+      "id": "GO-TEST-01",
+      "label": "Проверка изменённой логики",
+      "url": "/api/v1/context/documents/review-rules#GO-TEST-01"
+    },
+    "GO-FMT-01": {
+      "id": "GO-FMT-01",
+      "label": "Форматирование Go",
+      "url": "/api/v1/context/documents/review-rules#GO-FMT-01"
+    },
+    "GO-ERR-02": {
+      "id": "GO-ERR-02",
+      "label": "Возврат ошибки",
+      "url": "/api/v1/context/documents/review-rules#GO-ERR-02"
+    },
+    "GO-CTX-01": {
+      "id": "GO-CTX-01",
+      "label": "Отмена производного контекста",
+      "url": "/api/v1/context/documents/review-rules#GO-CTX-01"
+    }
+  },
+  "help": {
+    "topics": [
+      {
+        "id": "task-process",
+        "keywords": [
+          "критерии приёмки",
+          "задач",
+          "процесс",
+          "описание pr"
+        ],
+        "document_id": "process-guide",
+        "section": "Работа с задачей"
+      },
+      {
+        "id": "pr-rules",
+        "keywords": [
+          "подготов",
+          "правил",
+          "ревью",
+          "первый pr"
+        ],
+        "document_id": "review-rules",
+        "section": "Самопроверка"
+      },
+      {
+        "id": "error-rules",
+        "keywords": [
+          "%w",
+          "errors.is",
+          "оборачива",
+          "причину ошибки"
+        ],
+        "document_id": "review-rules",
+        "section": "GO-ERR-01"
+      },
+      {
+        "id": "test-rules",
+        "keywords": [
+          "тест",
+          "ci",
+          "пайплайн",
+          "сборк"
+        ],
+        "document_id": "review-rules",
+        "section": "GO-TEST-01"
+      },
+      {
+        "id": "greeting",
+        "keywords": [
+          "привет",
+          "что умеешь",
+          "помоги",
+          "помощь",
+          "начать"
+        ],
+        "document_id": "context",
+        "section": "Помощь"
+      }
+    ],
+    "access": [
+      {
+        "id": "grafana",
+        "name": "Grafana",
+        "aliases": [
+          "графана",
+          "дашборд",
+          "графане",
+          "графану",
+          "дашбордам"
+        ],
+        "document_id": "access-guide",
+        "section": "Grafana",
+        "request_url": "/api/v1/context/documents/access-guide#section-4"
+      },
+      {
+        "id": "repository",
+        "name": "Репозиторий",
+        "aliases": [
+          "git",
+          "репозиторию",
+          "репозитория",
+          "репозитории"
+        ],
+        "document_id": "access-guide",
+        "section": "Репозиторий",
+        "request_url": "/api/v1/context/documents/access-guide#section-5"
+      }
+    ],
+    "assistants": [
+      {
+        "id": "hr",
+        "name": "HR-помощник",
+        "description": "Вопросы о больничном и кадровых процедурах.",
+        "keywords": [
+          "больнич",
+          "кадров",
+          "hr",
+          "эйчар",
+          "people",
+          "болею",
+          "заболел"
+        ],
+        "document_id": "assistant-directory",
+        "section": "HR-вопросы"
+      },
+      {
+        "id": "vacation",
+        "name": "Помощник по отпускам",
+        "description": "Вопросы о планировании и оформлении отпуска.",
+        "keywords": [
+          "отпуск",
+          "отгул"
+        ],
+        "document_id": "assistant-directory",
+        "section": "Отпуск"
+      },
+      {
+        "id": "databases",
+        "name": "Помощник юнита БД",
+        "description": "Вопросы о PostgreSQL, владельцах баз и инструкциях работы с БД.",
+        "keywords": [
+          "баз данных",
+          "базам данных",
+          "базами данных",
+          "postgres",
+          "юнит бд",
+          "бд",
+          "базе данных",
+          "базы данных",
+          "sql"
+        ],
+        "document_id": "assistant-directory",
+        "section": "Базы данных"
+      }
+    ]
   }
 }

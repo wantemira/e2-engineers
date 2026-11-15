@@ -25,6 +25,7 @@ func loadTestTeam(t *testing.T) domain.Team {
 }
 func TestLocalAnswersUseTeamDocuments(t *testing.T) {
 	team := loadTestTeam(t)
+	team.Help = nil // Legacy configurations keep their existing fallback behavior.
 	team.PeopleAgentURL = ""
 	assistant := NewLocalAssistant()
 	tests := []struct {
@@ -63,6 +64,7 @@ func TestLocalAnswersUseTeamDocuments(t *testing.T) {
 
 func TestPeopleAnswerUsesConfiguredAgentOrMentorDraft(t *testing.T) {
 	team := loadTestTeam(t)
+	team.Help = nil
 	assistant := NewLocalAssistant()
 	for _, target := range []string{"", "https://people.example.test/"} {
 		team.PeopleAgentURL = target
@@ -81,6 +83,7 @@ func TestPeopleAnswerUsesConfiguredAgentOrMentorDraft(t *testing.T) {
 
 func TestLocalAnswerReadsUpdatedDocumentContent(t *testing.T) {
 	team := loadTestTeam(t)
+	team.Help = nil
 	for index := range team.Documents {
 		if team.Documents[index].ID == "access-guide" {
 			team.Documents[index].Body = "# Доступы\n\n## Доступ к инструменту\n\nОбновлённый процесс команды.\n"

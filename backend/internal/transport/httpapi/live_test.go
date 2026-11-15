@@ -13,6 +13,7 @@ import (
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpknowledge"
 	"github.com/wantemira/e2-engineers/backend/internal/llm"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
 	"github.com/wantemira/e2-engineers/backend/internal/service"
@@ -29,7 +30,7 @@ func modelCall(w http.ResponseWriter, name string, arguments any) {
 	}}})
 }
 
-func liveAPI(t *testing.T, provider http.HandlerFunc) (string, *httptest.Server) {
+func liveAPI(t *testing.T, provider http.HandlerFunc, customKnowledge ...service.KnowledgeTools) (string, *httptest.Server) {
 	t.Helper()
 	root := t.TempDir()
 	for _, dir := range []string{"teams", "skills", "mocks"} {
@@ -55,7 +56,13 @@ func liveAPI(t *testing.T, provider http.HandlerFunc) (string, *httptest.Server)
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := service.NewService(store, git, model, teams, llm.NewRunner(model, git, teams, nil))
+	knowledgeAPI := httptest.NewServer(mcpknowledge.NewHandler("test-secret", teams))
+	t.Cleanup(knowledgeAPI.Close)
+	var knowledge service.KnowledgeTools = mcpknowledge.NewClient(knowledgeAPI.URL, "test-secret")
+	if len(customKnowledge) > 0 {
+		knowledge = customKnowledge[0]
+	}
+	app := service.NewService(store, git, model, teams, llm.NewRunner(model, git, teams, nil), knowledge)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()

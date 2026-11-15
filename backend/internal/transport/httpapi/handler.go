@@ -250,11 +250,7 @@ func writeError(w http.ResponseWriter, err error) {
 	writeJSON(w, status, problem)
 }
 
-type documentSection struct {
-	ID    string
-	Title string
-	Body  string
-}
+type documentSection = domain.DocumentSection
 
 func documentPage(document domain.Document, rules map[string]domain.Rule) struct {
 	Title    string
@@ -264,23 +260,11 @@ func documentPage(document domain.Document, rules map[string]domain.Rule) struct
 		Title    string
 		Sections []documentSection
 	}{Title: document.Title}
-	intro, rest, _ := strings.Cut(document.Body, "\n## ")
-	if strings.HasPrefix(intro, "# ") {
-		_, intro, _ = strings.Cut(intro, "\n")
-	}
-	if body := strings.TrimSpace(intro); body != "" {
-		page.Sections = append(page.Sections, documentSection{Body: body})
-	}
-	if rest != "" {
-		for _, part := range strings.Split(rest, "\n## ") {
-			title, body, _ := strings.Cut(part, "\n")
-			title = strings.TrimSpace(title)
-			section := documentSection{Title: title, Body: strings.TrimSpace(body)}
-			if rule, exists := rules[title]; exists {
-				section.ID = rule.ID
-			}
-			page.Sections = append(page.Sections, section)
+	for _, section := range domain.Sections(document) {
+		if rule, exists := rules[section.Title]; exists {
+			section.ID = rule.ID
 		}
+		page.Sections = append(page.Sections, section)
 	}
 	return page
 }

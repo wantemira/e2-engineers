@@ -1,0 +1,7 @@
+{
+  "id": "team-help",
+  "version": "1.0.0",
+  "contract": "team-help.v1",
+  "description": "Командные документы, доступы, выбор профильного помощника и эскалация.",
+  "target": { "id": "local-team-help", "version": "1.0.0" }
+}

@@ -9,8 +9,8 @@ export function App() {
   const buddy = useBuddy();
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const { currentReview, latestRequest, busy } = buddy;
-  let stage = "Начать проверку";
-  let nextStep = "Отправьте номер или ссылку на PR";
+  let stage = "Готов помочь";
+  let nextStep = "Спросите о процессе, доступе или передайте PR";
 
   if (latestRequest) {
     stage = "Запрос ревью отправлен";
@@ -58,7 +58,7 @@ export function App() {
 
       <main className={styles.page}>
         <section className={styles.intro} aria-labelledby="page-title">
-          <h1 id="page-title">Первый PR</h1>
+          <h1 id="page-title">Помощь стажёру</h1>
           <p className={styles.progress} aria-live="polite">
             <span
               className={`${styles.statusDot} ${latestRequest ? styles.complete : ""}`}

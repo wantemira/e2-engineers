@@ -29,6 +29,47 @@ async function saveCoverage(page: Page, name: string) {
   await writeFile(join("coverage", "raw", `browser-${name}.json`), JSON.stringify(counters));
 }
 
+test("первая линия: документы, доступы и разные профильные помощники", async ({ page, context }) => {
+  const log = page.getByRole("log");
+  await page.goto("/");
+  await expect(log.getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
+  await send(page, "Что писать в описании задачи?");
+  const source = log.getByRole("link", { name: "Процессы демо-команды · Работа с задачей" });
+  await expect(source).toHaveAttribute("href", "/api/v1/context/documents/process-guide#section-1");
+  const popup = page.waitForEvent("popup");
+  await source.click();
+  const document = await popup;
+  await expect(document.locator(":target")).toHaveText("Работа с задачей");
+  await document.close();
+  await send(page, "Как получить доступ к Grafana?");
+  await expect(log.getByText(/Для чтения командных дашбордов/)).toContainText("Viewer");
+  const request = log.getByRole("link", { name: "Заявка: Grafana (демо)" });
+  const response = await context.request.get(new URL((await request.getAttribute("href"))!, page.url()).href);
+  expect(response.status()).toBe(200);
+  expect(await response.text()).toContain("Заявка Grafana");
+  for (const [question, recipient, section] of [
+    ["Как оформить больничный?", "HR-помощник", "section-1"],
+    ["Как оформить отпуск?", "Помощник по отпускам", "section-2"],
+    ["Кому задать вопрос по PostgreSQL?", "Помощник юнита БД", "section-3"],
+  ]) {
+    await send(page, question);
+    await expect(log.getByRole("link", { name: `Профиль: ${recipient} (демо)` })).toHaveAttribute("href", `/api/v1/context/documents/assistant-directory#${section}`);
+  }
+  await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
+  await send(page, "Как получить доступ к Kubernetes?");
+  await expect(log.getByText(/Поиск по материалам демо-команды не нашёл/)).toBeVisible();
+  await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
+  await send(page, "Подготовь вопрос наставнику");
+  await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveValue(/Kubernetes/);
+  await page.reload();
+  await expect(log.getByRole("link", { name: "Профиль: Помощник юнита БД (демо)" })).toBeVisible();
+  await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveValue(/Kubernetes/);
+  const workspace = await (await context.request.get("/api/v1/workspace")).json();
+  expect(workspace.review_requests).toEqual({});
+  expect(workspace.messages.filter((message: { help_execution?: { kind: string } }) => message.help_execution?.kind === "handoff")).toHaveLength(3);
+  await saveCoverage(page, "team-help");
+});
+
 test("PR и mock CI: падение, объяснение, повторный запуск и исправленная версия", async ({ page, context }) => {
   await configureDemo("-reset");
   const ci = page.getByRole("region", { name: "Результаты CI" });
@@ -274,26 +315,32 @@ test("действия в чате и повтор загрузки истори
   await expect(log.getByText(/Пришлите ссылку или номер PR/)).toBeVisible();
 
   await send(page, "Как получить доступ к репозиторию?");
-  const access = log.getByRole("link", { name: "Доступ к рабочим инструментам" });
-  await expect(access).toHaveAttribute("href", "/api/v1/context/documents/access-guide");
+  const access = log.getByRole("link", { name: "Доступ к рабочим инструментам · Репозиторий" });
+  await expect(access).toHaveAttribute("href", "/api/v1/context/documents/access-guide#section-3");
   const accessDoc = await context.request.get(new URL((await access.getAttribute("href"))!, page.url()).href);
   expect(accessDoc.status()).toBe(200);
   expect(await accessDoc.text()).toContain("Доступ к инструменту");
 
   await send(page, "Как оформить больничный?");
-  await expect(log.getByRole("link", { name: "Открыть People-агента" })).toHaveAttribute("href", "https://people.example.test/");
+  await expect(log.getByRole("link", { name: "Профиль: HR-помощник (демо)" })).toHaveAttribute("href", "/api/v1/context/documents/assistant-directory#section-1");
 
+  await send(page, "Не могу запустить orders: получаю 502, уже пробовал перезапуск Docker");
+  await expect(log.getByText(/Что проверил Buddy/)).toContainText("STOPPED");
+  await expect(log.getByRole("textbox", { name: "Черновик для наставника" })).toHaveCount(0);
+  await send(page, "Не помогло");
+  await expect(log.getByText(/Предыдущая рекомендация не помогла/)).toBeVisible();
   await send(page, "Как обратиться к наставнику?");
-  const draft = log.getByRole("textbox", { name: "Черновик для наставника" });
-  await expect(draft).toHaveValue(/Уже проверил/);
-  await log.getByRole("button", { name: "Скопировать черновик" }).click();
-  await expect(log.getByText("Черновик скопирован")).toBeVisible();
+  const draft = log.getByRole("textbox", { name: "Черновик для наставника" }).last();
+  await expect(draft).toHaveValue(/перезапуск Docker/);
+  await draft.fill((await draft.inputValue()) + "\nДополнение: проверил логи сервиса.");
+  await log.getByRole("button", { name: "Скопировать черновик" }).last().click();
+  await expect(log.getByText("Черновик скопирован").last()).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await draft.inputValue());
 
   await page.evaluate(() => {
     navigator.clipboard.writeText = () => Promise.reject(new Error("Clipboard unavailable"));
   });
-  await log.getByRole("button", { name: "Скопировать черновик" }).click();
+  await log.getByRole("button", { name: "Скопировать черновик" }).last().click();
   await expect(log.getByText(/Скопируйте его вручную/)).toBeVisible();
   await expect(draft).toBeFocused();
 

@@ -105,6 +105,7 @@ export function ChatPanel({
               команды. Здесь также можно спросить про рабочие инструменты и
               процессы.
             </p>
+            <p>Например: «Как получить доступ к Grafana?», «Как оформить отпуск?», «Кому задать вопрос по БД?».</p>
           </div>
         )}
         {messages.map((message) => (
@@ -207,11 +208,14 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
 
 function MentorDraft({ text }: { text: string }) {
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const [draft, setDraft] = useState(text);
   const [feedback, setFeedback] = useState("");
+
+  useEffect(() => { setDraft(text); setFeedback(""); }, [text]);
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(draft);
       setFeedback("Черновик скопирован");
     } catch {
       draftRef.current?.focus();
@@ -224,7 +228,7 @@ function MentorDraft({ text }: { text: string }) {
     <div className={styles.mentorDraft}>
       <label>
         Черновик для наставника
-        <textarea ref={draftRef} rows={4} value={text} readOnly />
+        <textarea ref={draftRef} rows={6} value={draft} onChange={(event) => { setDraft(event.target.value); setFeedback(""); }} />
       </label>
       <Button variant="secondary" onClick={() => void copy()}>
         Скопировать черновик

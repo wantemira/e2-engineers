@@ -43,7 +43,7 @@ func Load(projectRoot, id string) (domain.SkillDefinition, error) {
 	if decoder.Decode(new(any)) != io.EOF || skill.ID != id || !ValidRef(skill.SkillRef) || !ValidRef(skill.Target) || strings.TrimSpace(skill.Description) == "" {
 		return skill, fmt.Errorf("invalid skill manifest %s", id)
 	}
-	if skill.Contract != domain.ReviewSkillContract && skill.Contract != domain.MessageSkillContract {
+	if skill.Contract != domain.ReviewSkillContract && skill.Contract != domain.MessageSkillContract && skill.Contract != domain.HelpSkillContract {
 		return skill, fmt.Errorf("unsupported skill contract %q", skill.Contract)
 	}
 	if skill.Contract == domain.ReviewSkillContract && len(skill.Triggers) != 0 {

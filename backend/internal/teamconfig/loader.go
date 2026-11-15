@@ -10,6 +10,7 @@ import (
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 	"github.com/wantemira/e2-engineers/backend/internal/skillcatalog"
+	"github.com/wantemira/e2-engineers/backend/internal/teamhelp"
 )
 
 type configuredDocument struct {
@@ -19,6 +20,7 @@ type configuredDocument struct {
 }
 
 type teamConfiguration struct {
+	Help           *domain.HelpCatalog     `json:"help"`
 	Skills         []string                `json:"skills"`
 	Capabilities   map[string]string       `json:"capabilities"`
 	Training       *domain.TrainingContext `json:"training"`
@@ -61,6 +63,7 @@ func (loader *Loader) Load() (domain.Team, error) {
 		}
 	}
 	team := domain.Team{
+		Help:           configuration.Help,
 		Training:       configuration.Training,
 		PeopleAgentURL: configuration.PeopleAgentURL,
 		ID:             configuration.ID, Name: configuration.Name, Repository: configuration.Repository,
@@ -133,6 +136,9 @@ func (loader *Loader) Load() (domain.Team, error) {
 	review, ok := enabled[team.Capabilities["pr_review"]]
 	if !ok || review.Contract != domain.ReviewSkillContract {
 		return domain.Team{}, fmt.Errorf("pr_review requires an enabled %s skill", domain.ReviewSkillContract)
+	}
+	if err := teamhelp.Validate(team); err != nil {
+		return domain.Team{}, err
 	}
 	return team, nil
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
+	"github.com/wantemira/e2-engineers/backend/internal/teamhelp"
 )
 
 type Agent interface {
@@ -26,6 +27,35 @@ func (service *Service) agentMessage(ctx context.Context, agent Agent, actor str
 	case "answer_question":
 		message := decision.Message
 		message.ID, message.Role = "assistant_"+op.Operation.ID, "assistant"
+		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
+	case "search_team_knowledge":
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		var message domain.Message
+		message, err = service.investigate(ctx, actor, input, decision.Query)
+		message.ID = "assistant_" + op.Operation.ID
+		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
+	case "find_team_help":
+		input := domain.ChatInput{Text: op.Command.Text, History: history, CurrentReview: current, Team: team}
+		if !teamhelp.Enabled(team) {
+			return domain.Result{}, domain.Problem("HELP_NOT_FOUND", "Помощь команды не настроена.")
+		}
+		var message domain.Message
+		switch decision.HelpKind {
+		case "access":
+			message, err = teamhelp.Access(input, decision.TargetID)
+		case "handoff":
+			message, err = teamhelp.Handoff(input, decision.TargetID)
+		case "escalation":
+			if teamhelp.WantsEscalation(input.Text) {
+				message = teamhelp.Escalate(input)
+			} else {
+				decision.Tool = "search_team_knowledge"
+				message, err = service.investigate(ctx, actor, input, input.Text)
+			}
+		default:
+			return domain.Result{}, domain.Problem("HELP_NOT_FOUND", "Неизвестный сценарий помощи.")
+		}
+		message.ID = "assistant_" + op.Operation.ID
 		result.Messages = []domain.Message{{ID: "user_" + op.Operation.ID, Role: "user", Text: op.Command.Text}, message}
 	case "run_pr_self_review":
 		op.Command.RunChecks = decision.RunChecks
