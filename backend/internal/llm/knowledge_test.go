@@ -33,6 +33,11 @@ func TestKnowledgeAnswerUsesBoundedEvidenceAndOnlyReturnedSources(t *testing.T) 
 				if !strings.Contains(body.Messages[1].Content, `"purpose":"information"`) {
 					t.Error("intent was lost")
 				}
+				properties := body.Tools[0].Function.Parameters["properties"].(map[string]any)
+				items := properties["source_references"].(map[string]any)["items"].(map[string]any)
+				if scenario != "empty search" && len(items["enum"].([]any)) != 1 {
+					t.Error("verified source references were not constrained")
+				}
 				refs := []string{"access-guide#Grafana"}
 				text := "Grafana показывает метрики на дашбордах."
 				name := "answer_from_knowledge"

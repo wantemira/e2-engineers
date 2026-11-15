@@ -45,9 +45,22 @@ func (client *Client) Answer(ctx context.Context, input domain.ChatInput) (domai
 
 func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.AgentDecision, error) {
 	var decision domain.AgentDecision
+	references := make([]string, 0)
+	for _, document := range input.Team.Documents {
+		references = append(references, document.ID)
+		for _, section := range domain.Sections(document) {
+			if section.Title != "" {
+				references = append(references, document.ID+"#"+section.Title)
+			}
+		}
+	}
+	documentReference := str()
+	if len(references) > 0 {
+		documentReference["enum"] = references
+	}
 	tools := []Tool{
 		tool("answer_question", "Ответить по командным документам, объяснить замечание, уточнить запрос или подготовить черновик наставнику.", map[string]any{
-			"text": str(), "document_ids": map[string]any{"type": "array", "items": str()}, "mentor_draft": str(),
+			"text": str(), "document_ids": map[string]any{"type": "array", "items": documentReference}, "mentor_draft": str(),
 		}),
 		tool("run_pr_self_review", "Самопроверка PR и разбор CI; run_checks=true запускает новый синтетический CI без исполнения кода.", map[string]any{"pr_ref": str(), "run_checks": map[string]any{"type": "boolean"}}),
 	}

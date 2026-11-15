@@ -84,6 +84,11 @@ func Search(team domain.Team, query string) domain.KnowledgeSearch {
 	}
 	matches := []ranked{}
 	normalized := strings.ToLower(query)
+	// Common Russian names for a pull request should find the team's PR instructions.
+	if regexp.MustCompile(`(^|[^\pL\pN])(пулреквест\w*|пулл?[- ]?реквест\w*|pull request)(($|[^\pL\pN]))`).MatchString(normalized) {
+		normalized = strings.ReplaceAll(normalized, "pull request", "")
+		normalized += " pr"
+	}
 	if team.Help != nil {
 		for _, resource := range team.Help.Access {
 			for _, alias := range append([]string{resource.Name}, resource.Aliases...) {

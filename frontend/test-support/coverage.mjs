@@ -36,8 +36,8 @@ const context = report.createContext({ dir, coverageMap: map });
 for (const kind of ["text", "text-summary", "html", "lcovonly"]) {
   reports.create(kind).execute(context);
 }
-const { statements } = map.getCoverageSummary();
-if (statements.covered * 100 <= 80 * statements.total) {
-  console.error("Покрытие операторов фронтенда должно превышать 80%.");
+const { lines } = map.getCoverageSummary();
+if (lines.covered * 100 <= 80 * lines.total) {
+  console.error("Покрытие строк фронтенда должно превышать 80%.");
   process.exitCode = 1;
 }

@@ -38,7 +38,7 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(
   /\/$/,
   "",
 );
-const operationTimeoutMs = 90_000;
+const operationTimeoutMs = 130_000;
 
 interface ErrorDto {
  reason?: string;

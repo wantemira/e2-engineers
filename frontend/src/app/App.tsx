@@ -13,7 +13,7 @@ export function App() {
   let nextStep = "Спросите о процессе, доступе или передайте PR";
 
   if (latestRequest) {
-    stage = "Запрос ревью отправлен";
+    stage = "Запрос создан в демонстрационном Git-сервисе";
     nextStep = "Дождитесь обратной связи наставника";
   } else if (buddy.isReconcilingRequest) {
     stage = "Ожидаем подтверждения отправки";

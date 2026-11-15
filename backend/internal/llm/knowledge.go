@@ -16,10 +16,18 @@ Mock-наблюдения прямо называй демонстрационн
 
 // AnswerFromKnowledge is one bounded synthesis call, without access to more tools.
 func (client *Client) AnswerFromKnowledge(ctx context.Context, input domain.ChatInput, evidence domain.Investigation) (domain.Message, error) {
+	references := make([]string, 0, len(evidence.Search.Hits))
+	for _, hit := range evidence.Search.Hits {
+		references = append(references, hit.Reference)
+	}
+	sourceReference := str()
+	if len(references) > 0 {
+		sourceReference["enum"] = references
+	}
 	call, err := client.choose(ctx, knowledgePolicy, map[string]any{
 		"question": input.Text, "history": input.History, "evidence": evidence,
 	}, []Tool{tool("answer_from_knowledge", "Ответ по уже проверенным источникам или уточнение при отсутствии сведений.", map[string]any{
-		"text": str(), "source_references": map[string]any{"type": "array", "items": str()},
+		"text": str(), "source_references": map[string]any{"type": "array", "items": sourceReference},
 	})})
 	if err != nil {
 		return domain.Message{}, err

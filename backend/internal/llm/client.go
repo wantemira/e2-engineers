@@ -42,8 +42,8 @@ func New(config Config) (*Client, error) {
 	if config.Timeout == 0 {
 		config.Timeout = 20 * time.Second
 	}
-	if config.Timeout < time.Second || config.Timeout > 25*time.Second {
-		return nil, fmt.Errorf("LLM_TIMEOUT must be between 1s and 25s")
+	if config.Timeout < time.Second || config.Timeout > 45*time.Second {
+		return nil, fmt.Errorf("LLM_TIMEOUT must be between 1s and 45s")
 	}
 	return &Client{config: config, http: &http.Client{
 		Timeout: config.Timeout,
@@ -154,7 +154,7 @@ func (client *Client) chooseOnce(ctx context.Context, policy string, input any, 
 	parameters := map[string]any{
 		"model":    client.config.Model,
 		"messages": []map[string]string{{"role": "system", "content": policy}, {"role": "user", "content": string(data)}},
-		"tools":    tools, "tool_choice": choice, "parallel_tool_calls": false, "max_completion_tokens": 4096,
+		"tools":    tools, "tool_choice": choice, "parallel_tool_calls": false, "max_completion_tokens": 8192,
 	}
 
 	payload, err := json.Marshal(parameters)

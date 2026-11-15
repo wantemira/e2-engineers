@@ -74,3 +74,22 @@ func TestGenericCISectionsDoNotAnswerUnknownProductAccess(t *testing.T) {
 		t.Fatal("configured alias was not searched")
 	}
 }
+
+func TestPullRequestSynonymsFindExistingInstructions(t *testing.T) {
+	team, err := teamconfig.New("../../../..").Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, question := range []string{"Как оформить пулреквест?", "Как оформить пулл-реквест?", "Как подготовить pull request?"} {
+		hits := mcpknowledge.Search(team, question).Hits
+		found := false
+		for _, hit := range hits {
+			if hit.Reference == "process-guide#Первый PR" || hit.Reference == "review-rules#Самопроверка" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no PR instructions for %q: %+v", question, hits)
+		}
+	}
+}

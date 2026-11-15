@@ -41,6 +41,8 @@ test("первая линия: документы, доступы и разны�
   const document = await popup;
   await expect(document.locator(":target")).toHaveText("Работа с задачей");
   await document.close();
+  await send(page, "Как оформить пулреквест?");
+  await expect(log.getByRole("link", { name: "Правила разработки и ревью · Самопроверка" })).toBeVisible();
   await send(page, "Как получить доступ к Grafana?");
   await expect(log.getByText(/Для чтения командных дашбордов/)).toContainText("Viewer");
   const request = log.getByRole("link", { name: "Заявка: Grafana (демо)" });
@@ -87,10 +89,10 @@ test("PR и mock CI: падение, объяснение, повторный з
     await expect(page.getByText(/Разберите падение CI/)).toBeVisible();
     await send(page, "Почему упал тест?");
     await expect(page.getByRole("log").getByText(/Проверка ожидает сохранённую причину ошибки/)).toBeVisible();
-    await page.getByRole("button", { name: "Запустить mock CI" }).click();
+    await page.getByRole("button", { name: "Имитировать запуск CI и обновить анализ" }).click();
     await expect(ci.getByText(/ID запуска/)).not.toHaveText(firstRun);
     await configureDemo("-revision", "fixed");
-    await page.getByRole("button", { name: "Запустить mock CI" }).click();
+    await page.getByRole("button", { name: "Имитировать запуск CI и обновить анализ" }).click();
     await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
     await expect(ci.locator("li").filter({ hasText: "TestCreateRepositoryError" })).toContainText("PASSED");
     const fixedRun = await ci.getByText(/ID запуска/).innerText();
@@ -168,6 +170,7 @@ test("новая версия PR требует отдельной отправ�
   async function confirm() {
     await sendReview.click();
     await page.getByRole("dialog").getByRole("button", { name: "Отправить", exact: true }).click();
+    await expect(page.getByText("Запрос создан в демонстрационном Git-сервисе")).toBeVisible();
     await expect(page.getByText("Дождитесь обратной связи наставника")).toBeVisible();
   }
   try {
@@ -179,7 +182,7 @@ test("новая версия PR требует отдельной отправ�
     const initial = await (await context.request.get("/api/v1/workspace")).json();
     const initialReceipt = initial.review_requests["e2-engineers#17"];
     await configureDemo("-revision", "fixed");
-    await page.getByRole("button", { name: "Проверить повторно" }).click();
+    await page.getByRole("button", { name: "Обновить AI-анализ" }).click();
     await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
     await expect(sendReview).toBeVisible();
     await expect(page.getByText("Дождитесь обратной связи наставника")).toHaveCount(0);
@@ -191,7 +194,7 @@ test("новая версия PR требует отдельной отправ�
     expect(fixedReceipt.head_sha).toBe(fixed.reviews[0].head_sha);
     expect(fixedReceipt.head_sha).not.toBe(initialReceipt.head_sha);
     expect(fixedReceipt.id).not.toBe(initialReceipt.id);
-    await page.getByRole("button", { name: "Проверить повторно" }).click();
+    await page.getByRole("button", { name: "Обновить AI-анализ" }).click();
     await expect(page.getByText("Дождитесь обратной связи наставника")).toBeVisible();
     await expect(sendReview).toHaveCount(0);
     await page.reload();
@@ -260,7 +263,7 @@ test("от первого сообщения до квитанции и восс
     await expect(dialog.getByRole("alert")).toContainText("Запустите проверку повторно");
     await dialog.getByRole("button", { name: "Отмена" }).click();
 
-    await page.getByRole("button", { name: "Проверить повторно" }).click();
+    await page.getByRole("button", { name: "Обновить AI-анализ" }).click();
     await expect(page.getByRole("heading", { name: "В проверенном diff замечаний нет" })).toBeVisible();
     await expect(page.getByText(/видно оборачивание/)).toBeVisible();
     await expect(page.getByText("CI · Тестовая проверка CI пройдена")).toBeVisible();

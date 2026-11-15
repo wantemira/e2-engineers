@@ -23,6 +23,7 @@ func TestTeamAnswersHaveSpecificSourcesAndTargets(t *testing.T) {
 	for _, tc := range []struct{ question, kind, target, text string }{
 		{"Что писать в описании задачи?", "docs", "process-guide#Работа с задачей", "критерии приёмки"},
 		{"Как подготовить PR к ревью наставника?", "docs", "review-rules#Самопроверка", "gofmt"},
+		{"Как оформить пулреквест?", "docs", "review-rules#Самопроверка", "gofmt"},
 		{"Как получить доступ к Grafana?", "access", "grafana", "Viewer"},
 		{"Как получить доступ к репозиторию?", "access", "repository", "Developer"},
 		{"Как оформить больничный?", "handoff", "hr", "HR-помощник"},

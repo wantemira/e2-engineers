@@ -47,7 +47,7 @@ export function ReviewPanel({
       onClick={() => void onRecheck()}
       disabled={disabled}
     >
-      {busy === "review" ? "Проверяем…" : "Проверить повторно"}
+      {busy === "review" ? "Проверяем…" : "Обновить AI-анализ"}
     </Button>
   );
   const requestButton =
@@ -156,7 +156,7 @@ export function ReviewPanel({
           </div>
 
           <div className={styles.actions}>
-            {!isPrevious && <Button variant="secondary" disabled={disabled} onClick={() => void onRunChecks()}>Запустить mock CI</Button>}
+            {!isPrevious && <Button variant="secondary" disabled={disabled} onClick={() => void onRunChecks()}>Имитировать запуск CI и обновить анализ</Button>}
             {isPrevious ? (
               <Button
                 variant="secondary"
@@ -178,6 +178,7 @@ export function ReviewPanel({
               </>
             )}
           </div>
+          <p>CI здесь имитируется: код PR не исполняется. Обновление AI-анализа использует последний доступный результат CI.</p>
         </>
       )}
     </section>
