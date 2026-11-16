@@ -162,7 +162,7 @@ func TestLiveFailureRetryAndUntrustedResults(t *testing.T) {
 	rateLimit.Store(true)
 	var scenario atomic.Int32
 	_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if rateLimit.Swap(false) {
+		if rateLimit.Load() {
 			w.WriteHeader(429)
 			w.Write([]byte("provider body with synthetic-key"))
 			return
@@ -190,6 +190,7 @@ func TestLiveFailureRetryAndUntrustedResults(t *testing.T) {
 	if failed.State != "FAILED" || failed.Error.Code != "LLM_UNAVAILABLE" || !failed.Error.Retryable {
 		t.Fatalf("silent fallback: %+v", failed)
 	}
+	rateLimit.Store(false)
 	apiCall(t, client, "POST", api.URL+"/api/v1/operations/"+id+"/retry", "rate-limit", struct{}{}, http.StatusAccepted, nil)
 	if retried := waitForOperation(t, client, api.URL, id); retried.State != "SUCCEEDED" {
 		t.Fatalf("retry failed: %+v", retried)
@@ -208,5 +209,31 @@ func TestLiveFailureRetryAndUntrustedResults(t *testing.T) {
 	apiCall(t, client, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &workspace)
 	if len(workspace.Reviews) != 0 || len(workspace.ReviewRequests) != 0 {
 		t.Fatal("invalid model result created report or receipt")
+	}
+}
+
+func TestLiveTransientFailureRecoversWithinOriginalOperation(t *testing.T) {
+	var calls atomic.Int32
+	_, api := liveAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		modelCall(w, "answer_question", map[string]any{"text": "Ответ по документам команды.", "document_ids": []string{"context"}, "mentor_draft": ""})
+	})
+	client := sessionClient(t)
+	command := map[string]string{"text": "Как работать в команде?"}
+	id := submitForTest(t, client, api.URL, "/messages", "automatic-retry", command)
+	completed := waitForOperation(t, client, api.URL, id)
+	if completed.State != "SUCCEEDED" || calls.Load() != 2 {
+		t.Fatalf("temporary failure required a manual retry: %+v, calls %d", completed, calls.Load())
+	}
+	if duplicate := submitForTest(t, client, api.URL, "/messages", "automatic-retry", command); duplicate != id {
+		t.Fatal("original operation identity lost")
+	}
+	var workspace domain.Workspace
+	apiCall(t, client, "GET", api.URL+"/api/v1/workspace", "", nil, http.StatusOK, &workspace)
+	if len(workspace.Messages) != 2 || len(workspace.ReviewRequests) != 0 {
+		t.Fatalf("automatic retry duplicated messages or wrote to Git: %+v", workspace)
 	}
 }

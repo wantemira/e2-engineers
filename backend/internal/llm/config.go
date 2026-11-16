@@ -19,7 +19,7 @@ func FromEnvironment(getenv func(string) string) (*Client, error) {
 	if provider != "" && provider != "openai-compatible" {
 		return nil, fmt.Errorf("LLM_PROVIDER must be openai-compatible")
 	}
-	timeout := 20 * time.Second
+	timeout := 45 * time.Second
 	if value := getenv("LLM_TIMEOUT"); value != "" {
 		var err error
 		timeout, err = time.ParseDuration(value)

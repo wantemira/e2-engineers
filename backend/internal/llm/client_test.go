@@ -29,6 +29,7 @@ func testClient(t *testing.T, handler http.HandlerFunc) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.retryDelay = time.Millisecond
 	return client
 }
 
@@ -270,7 +271,7 @@ func TestProviderFailureReasons(t *testing.T) {
 			})
 			_, err := client.Plan(context.Background(), domain.ChatInput{})
 			problem := domain.PublicError(err)
-			if attempts != 1 || problem.Reason != tc.reason || problem.Code != "LLM_UNAVAILABLE" || strings.Contains(problem.Message, "SECRET") {
+			if attempts != maxAttempts || problem.Reason != tc.reason || problem.Code != "LLM_UNAVAILABLE" || strings.Contains(problem.Message, "SECRET") {
 				t.Fatalf("incorrect error or retry: %+v", problem)
 			}
 		})

@@ -50,7 +50,7 @@ func (service *Service) runNext(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	operationContext, cancel := context.WithTimeout(ctx, 110*time.Second)
+	operationContext, cancel := context.WithTimeout(ctx, 200*time.Second)
 	result, runErr := service.process(operationContext, job, workspace)
 	cancel()
 	if ctx.Err() != nil {

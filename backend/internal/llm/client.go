@@ -5,13 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,8 +26,9 @@ type Config struct {
 }
 
 type Client struct {
-	config Config
-	http   *http.Client
+	config     Config
+	http       *http.Client
+	retryDelay time.Duration
 }
 
 func New(config Config) (*Client, error) {
@@ -40,12 +41,12 @@ func New(config Config) (*Client, error) {
 		return nil, fmt.Errorf("live mode requires LLM_MODEL and LLM_API_KEY")
 	}
 	if config.Timeout == 0 {
-		config.Timeout = 20 * time.Second
+		config.Timeout = 45 * time.Second
 	}
 	if config.Timeout < time.Second || config.Timeout > 45*time.Second {
 		return nil, fmt.Errorf("LLM_TIMEOUT must be between 1s and 45s")
 	}
-	return &Client{config: config, http: &http.Client{
+	return &Client{config: config, retryDelay: 500 * time.Millisecond, http: &http.Client{
 		Timeout: config.Timeout,
 		// Do not forward prompts or credentials to a redirect destination.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -119,27 +120,6 @@ func unavailable(reason string) error {
 	return problem
 }
 
-// choose accepts exactly one declared function call. It never executes model text.
-func (client *Client) choose(ctx context.Context, policy string, input any, tools []Tool) (toolCall, error) {
-	budget, cancel := context.WithTimeout(ctx, client.config.Timeout)
-	defer cancel()
-	call, err := client.chooseOnce(budget, policy, input, tools)
-	var problem *domain.AppError
-	if errors.As(err, &problem) && problem.Code == "LLM_INVALID_RESULT" && problem.Reason == "tool_required" && budget.Err() == nil {
-		// No tool has executed yet. Retry the original input once; never promote
-		// unvalidated model prose into an answer or replay an executed action.
-		slog.Info("retrying LLM output format", "reason", problem.Reason)
-		call, err = client.chooseOnce(budget, policy+"\nИсправь формат: предыдущая попытка не вернула вызов функции. Вызови ровно одну из предоставленных функций с аргументами по её JSON Schema. Не отвечай обычным текстом, не описывай вызов в Markdown и не добавляй новых функций.", input, tools)
-	}
-	if ctx.Err() != nil {
-		return toolCall{}, ctx.Err()
-	}
-	if budget.Err() != nil {
-		return toolCall{}, failure("LLM_TIMEOUT", true)
-	}
-	return call, err
-}
-
 func (client *Client) chooseOnce(ctx context.Context, policy string, input any, tools []Tool) (toolCall, error) {
 	var empty toolCall
 	data, err := json.Marshal(input)
@@ -154,7 +134,10 @@ func (client *Client) chooseOnce(ctx context.Context, policy string, input any, 
 	parameters := map[string]any{
 		"model":    client.config.Model,
 		"messages": []map[string]string{{"role": "system", "content": policy}, {"role": "user", "content": string(data)}},
-		"tools":    tools, "tool_choice": choice, "parallel_tool_calls": false, "max_completion_tokens": 8192,
+		"tools":    tools, "tool_choice": choice, "parallel_tool_calls": false, "max_completion_tokens": 4096,
+	}
+	if len(tools) == 1 && tools[0].Function.Name == "submit_review" {
+		parameters["max_completion_tokens"] = 8192
 	}
 
 	payload, err := json.Marshal(parameters)
@@ -186,7 +169,14 @@ func (client *Client) chooseOnce(ctx context.Context, policy string, input any, 
 		// Status codes are safe to log; provider bodies may contain sensitive data.
 		slog.Warn("LLM HTTP request rejected", "status", response.StatusCode)
 		if response.StatusCode == 429 {
-			return empty, unavailable("rate_limit")
+			problem := unavailable("rate_limit")
+			if seconds, err := strconv.Atoi(response.Header.Get("Retry-After")); err == nil && seconds > 0 {
+				return empty, &retryAfterError{err: problem, delay: time.Duration(min(seconds, 86400)) * time.Second}
+			}
+			if retryAt, err := http.ParseTime(response.Header.Get("Retry-After")); err == nil && time.Until(retryAt) > 0 {
+				return empty, &retryAfterError{err: problem, delay: time.Until(retryAt)}
+			}
+			return empty, problem
 		}
 		if response.StatusCode == 408 || response.StatusCode >= 500 {
 			return empty, unavailable("provider_error")
@@ -195,6 +185,9 @@ func (client *Client) chooseOnce(ctx context.Context, policy string, input any, 
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 512*1024+1))
 	if err != nil {
+		if ctx.Err() != nil {
+			return empty, ctx.Err()
+		}
 		return empty, unavailable("response_read")
 	}
 

@@ -13,7 +13,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_TIMEOUT: ${LLM_TIMEOUT:-20s}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-45s}
     volumes:
       - state:/data
       - ./teams:/app/teams:ro
