@@ -87,10 +87,7 @@ func (client *Client) Plan(ctx context.Context, input domain.ChatInput) (domain.
 	for _, skill := range input.Team.Skills {
 		skills = append(skills, skillContext{skill.ID, skill.Description, skill.Instructions})
 	}
-	call, err := client.choose(ctx, currentPolicy, map[string]any{
-		"question": input.Text, "history": input.History, "current_review": input.CurrentReview,
-		"team": input.Team, "skill_instructions": skills, "knowledge_evidence": input.Knowledge,
-	}, tools)
+	call, err := client.choose(ctx, currentPolicy, routingInput(input, skills), tools)
 	if err != nil {
 		return decision, err
 	}

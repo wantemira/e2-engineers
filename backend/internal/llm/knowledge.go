@@ -25,7 +25,7 @@ func (client *Client) AnswerFromKnowledge(ctx context.Context, input domain.Chat
 		sourceReference["enum"] = references
 	}
 	call, err := client.choose(ctx, knowledgePolicy, map[string]any{
-		"question": input.Text, "history": input.History, "evidence": evidence,
+		"question": input.Text, "history": boundedHistory(input.History), "evidence": evidence,
 	}, []Tool{tool("answer_from_knowledge", "Ответ по уже проверенным источникам или уточнение при отсутствии сведений.", map[string]any{
 		"text": str(), "source_references": map[string]any{"type": "array", "items": sourceReference},
 	})})
