@@ -142,7 +142,7 @@ func (service *Service) process(ctx context.Context, op domain.Job, state domain
 				handled = true
 			} else if len(evidence.Search.Hits) == 0 {
 				lower := strings.ToLower(strings.TrimSpace(input.Text))
-				knownAction := referenceInMessage(input.Text) != "" || wantsCheckRun(lower) || (team.Training != nil && trainingQuestion(lower))
+				knownAction := referenceInMessage(input.Text) != "" || wantsCheckRun(lower) || (team.Training != nil && trainingQuestion(lower)) || matchingMessageSkill(team, lower) != nil
 				reviewFollowup := current != nil && (containsAny(lower, "замечан", "пункт", "перепроверь", "повторная проверка") || lower == "почему?" || lower == "объясни" || lower == "подробнее")
 				if !teamhelp.IsSocialMessage(input.Text) && !knownAction && !reviewFollowup {
 					message = teamhelp.MissingKnowledge(input)

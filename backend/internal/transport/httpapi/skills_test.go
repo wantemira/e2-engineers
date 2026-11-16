@@ -13,6 +13,7 @@ import (
 	"github.com/wantemira/e2-engineers/backend/internal/assistant"
 	"github.com/wantemira/e2-engineers/backend/internal/domain"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpgit"
+	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpknowledge"
 	"github.com/wantemira/e2-engineers/backend/internal/integration/mcpskills"
 	"github.com/wantemira/e2-engineers/backend/internal/repository"
 	"github.com/wantemira/e2-engineers/backend/internal/service"
@@ -63,7 +64,7 @@ func TestAdditionalSkillNeedsOnlyFilesAndConfiguration(t *testing.T) {
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	skill := domain.SkillDefinition{SkillRef: domain.SkillRef{ID: "mentor-handoff", Version: "1.0.0"}, Target: domain.SkillRef{ID: "internal-handoff", Version: "2.0.0"}, Contract: domain.MessageSkillContract, Description: "Test extension", Triggers: []string{"подготовь контекст наставнику"}}
+	skill := domain.SkillDefinition{SkillRef: domain.SkillRef{ID: "mentor-handoff", Version: "1.0.0"}, Target: domain.SkillRef{ID: "internal-handoff", Version: "2.0.0"}, Contract: domain.MessageSkillContract, Description: "Test extension", Triggers: []string{"зебрамаркер"}}
 	writeJSON(filepath.Join(directory, "skill.json"), skill)
 	instructions := filepath.Join(directory, "SKILL.md")
 	if err := os.WriteFile(instructions, []byte("Prepare context; never submit a review."), 0600); err != nil {
@@ -86,7 +87,10 @@ func TestAdditionalSkillNeedsOnlyFilesAndConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root), runner)
+	knowledgeAPI := httptest.NewServer(mcpknowledge.NewHandler("knowledge-secret", teamconfig.New(root)))
+	defer knowledgeAPI.Close()
+	knowledge := mcpknowledge.NewClient(knowledgeAPI.URL, "knowledge-secret")
+	app := service.NewService(store, git, assistant.NewLocalAssistant(), teamconfig.New(root), runner, knowledge)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- app.Run(ctx) }()
@@ -100,13 +104,16 @@ func TestAdditionalSkillNeedsOnlyFilesAndConfiguration(t *testing.T) {
 	defer api.Close()
 	client := sessionClient(t)
 	run := func(key string) domain.Operation {
-		return waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", key, map[string]string{"text": "Подготовь контекст наставнику"}))
+		return waitForOperation(t, client, api.URL, submitForTest(t, client, api.URL, "/messages", key, map[string]string{"text": "Зебрамаркер"}))
 	}
 	first := run("extension-1")
 	if first.Result == nil || len(first.Result.Messages) != 2 {
 		t.Fatalf("new skill was not invoked: %+v", first)
 	}
 	message := first.Result.Messages[1]
+	if message.Help == nil || message.Help.Investigation == nil || len(message.Help.Investigation.Search.Hits) != 0 {
+		t.Fatalf("expected an actual empty knowledge search before skill routing: %+v", message.Help)
+	}
 	if !strings.Contains(message.Text, "Ответ нового внутреннего скилла") || !strings.Contains(message.Text, "Источник — mock") || message.Skill == nil || message.Skill.Skill != skill.SkillRef || message.Skill.Target != skill.Target || message.Skill.Source != "MOCK" || message.Receipt != nil {
 		t.Fatalf("new skill lost its identity or performed an action: %+v", message)
 	}
