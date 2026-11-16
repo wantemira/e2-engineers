@@ -4,6 +4,11 @@
 
 Стек: Go 1.26.2, React/TypeScript, MCP, Docker Compose. Командный контекст и Agent Skills хранятся в Markdown/JSON; состояние — в JSON-хранилище.
 
+## Материалы
+
+- Презентация (PDF):
+- Видеодемонстрация:
+
 ## Запуск
 
 Нужны Docker с Compose и GNU Make. Из корня репозитория:
@@ -39,6 +44,15 @@ make up
 Полная последовательность и ожидаемые результаты — в [демонстрационном сценарии](docs/demo.md).
 
 ## Тесты и покрытие
+
+[Скачать готовый отчёт о покрытии и результатах тестов (ZIP)](docs/reports/verification-20261116-123501-693.zip). Проверенная версия — `12b8e1b`, 16 ноября 2026 года.
+
+| Покрытие исполняемых строк | Результат |
+| --- | --- |
+| Backend | 84,23% |
+| Frontend | 87,85% |
+
+После распаковки откройте `backend/coverage.html` и `frontend/coverage/index.html` в браузере. Результаты браузерных тестов — `frontend/playwright-report/index.html`.
 
 Из `backend`: `go test ./...`, `go vet ./...`. Из `frontend`: `npm ci`, `npm test`, `npm run build`, `npm run test:coverage`. Для браузерных тестов установите Chromium командой `npx playwright install chromium` либо задайте `BUDDY_BROWSER_CHANNEL=msedge` для установленного Microsoft Edge. Порты тестов — 4173 и 18080.
 
