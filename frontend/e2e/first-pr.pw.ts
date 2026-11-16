@@ -429,6 +429,7 @@ test("продолжает опрос операции из workspace при о�
     key: response.request().headers()["idempotency-key"],
   };
   const saved = await (await context.request.get("/api/v1/workspace")).json();
+  saved.assistant = { mode: "live", model: "test-model" };
   saved.pending_operations = [{
     operation_id: submitted.id, key: submitted.key, state: "RUNNING",
     command: { kind: "message", text: "Привет" },
@@ -441,6 +442,7 @@ test("продолжает опрос операции из workspace при о�
   try {
     await page.reload();
     await expect(page.getByRole("status").filter({ hasText: "AI-Buddy готовит ответ" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "AI-Buddy готовит ответ" })).toContainText("Временные сбои повторяем автоматически");
   } finally {
     release();
     gate = Promise.resolve();

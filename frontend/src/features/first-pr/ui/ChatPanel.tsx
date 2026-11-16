@@ -12,6 +12,7 @@ import type { BuddyError, BusyState, ChatMessage } from "../types";
 import styles from "./ChatPanel.module.css";
 
 type ChatPanelProps = {
+  live?: boolean;
   messages: ChatMessage[];
   busy: BusyState | null;
   loading: boolean;
@@ -27,6 +28,7 @@ const busyLabels: Record<BusyState, string> = {
 };
 
 export function ChatPanel({
+  live = false,
   messages,
   loading,
   busy,
@@ -116,6 +118,7 @@ export function ChatPanel({
           <p className={styles.pending} role="status">
             <span className={styles.pulse} aria-hidden="true" />
             {busyLabels[busy]}
+            {live && busy !== "request" && " Ожидаем модель. Временные сбои повторяем автоматически."}
           </p>
         )}
         {error && (

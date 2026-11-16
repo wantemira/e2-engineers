@@ -74,6 +74,7 @@ export function App() {
 
         <div className={styles.workspace}>
           <ChatPanel
+            live={buddy.assistant?.mode === "live"}
             messages={buddy.messages}
             loading={buddy.loading}
             busy={busy}
