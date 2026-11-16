@@ -5,7 +5,7 @@ CHECKS ?= UNKNOWN
 ENVIRONMENT ?= STOPPED
 
 .NOTPARALLEL:
-.PHONY: help up build restart down reset ps logs config demo-initial demo-fixed demo-ci demo-environment training-up training-down training-test training-solution-test
+.PHONY: help up build restart down reset ps logs config demo-reset demo-initial demo-fixed demo-ci demo-environment training-up training-down training-test training-solution-test
 
 define help_text
 make up       - build and start AI-Buddy
@@ -16,6 +16,7 @@ make build    - build service images
 make ps       - show service status
 make logs     - follow service logs
 make config   - validate Compose configuration
+make demo-reset - restore initial PR, fixture CI and mock environment; keep history
 make demo-initial - select the initial PR and keep history
 make demo-fixed   - select the corrected PR and keep history
 make demo-ci CHECKS=PASSED - set CI to UNKNOWN, RUNNING, FAILED or PASSED
@@ -55,6 +56,9 @@ logs:
 
 config:
 	$(COMPOSE) config --quiet
+
+demo-reset:
+	$(DEMO) -root /app -reset
 
 demo-initial:
 	$(DEMO) -root /app -revision initial
