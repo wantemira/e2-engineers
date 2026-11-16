@@ -42,7 +42,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read repository revision.' }
     $trackedChanges = @(& git status --porcelain --untracked-files=no)
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-    $package = Join-Path $projectRoot "artifacts/submission-$stamp"
+    $package = Join-Path $projectRoot "artifacts/verification-$stamp"
     if (Test-Path -LiteralPath $package) { throw "Output already exists: $package" }
     $backend = Join-Path $package 'backend'
     $frontend = Join-Path $package 'frontend'
@@ -111,7 +111,7 @@ try {
         frontend = @{ covered = $frontendCovered; total = $frontendTotal; percent = [Math]::Floor(10000.0 * $frontendCovered / $frontendTotal) / 100 }
         combined = @{ percent = [Math]::Floor(10000.0 * ($backendCovered + $frontendCovered) / ($backendTotal + $frontendTotal)) / 100 }
         checks = @('go test/vet/build', 'npm ci/build', 'frontend unit + browser tests', 'training solution tests')
-        not_checked = @('Live provider availability', 'Docker runtime startup', 'video and presentation')
+        not_checked = @('Live provider availability', 'Docker runtime startup')
     }
     # Windows PowerShell's Set-Content UTF8 adds a BOM, rejected by strict JSON readers.
     [System.IO.File]::WriteAllText((Join-Path $package 'summary.json'), ($summary | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
@@ -137,8 +137,8 @@ training/orders is a separate teaching exercise: its solution tests are checked,
 and its deliberately broken initial version is outside the AI-Buddy application metric.
 
 The automated suite uses synthetic services and a test LLM API. It does not call
-the configured Live provider or verify Docker startup. Record the manual smoke test
-separately using docs/submission.md. The PDF and video are separate delivery items.
+the configured Live provider or verify Docker startup. The functional scenario
+and expected results are documented in docs/demo.md.
 
 Only generated reports and this summary are packaged. The script does not read .env
 or copy project configuration, model keys, application state, or the source repository.
