@@ -6,7 +6,7 @@
 
 ## Материалы
 
-- Презентация (PDF):
+- Презентация (PDF): [открыть / скачать](docs/ai-buddy-presentation.pdf).
 - Видеодемонстрация:
   [смотреть YT](https://www.youtube.com/watch?v=CpjZIrk0Oj8);
   [скачать MP4](https://github.com/wantemira/e2-engineers/releases/download/demo-2026-11-16/ai-buddy-demo.mp4).
