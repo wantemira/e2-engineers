@@ -33,7 +33,7 @@ for (const name of readdirSync(raw)) {
 }
 
 const context = report.createContext({ dir, coverageMap: map });
-for (const kind of ["text", "text-summary", "html", "lcovonly"]) {
+for (const kind of ["text", "text-summary", "html", "lcovonly", "json-summary"]) {
   reports.create(kind).execute(context);
 }
 const { lines } = map.getCoverageSummary();
