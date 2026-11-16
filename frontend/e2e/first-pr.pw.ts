@@ -339,7 +339,9 @@ test("действия в чате и повтор загрузки истори
   await draft.fill((await draft.inputValue()) + "\nДополнение: проверил логи сервиса.");
   await log.getByRole("button", { name: "Скопировать черновик" }).last().click();
   await expect(log.getByText("Черновик скопирован").last()).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await draft.inputValue());
+  // Windows clipboard uses CRLF; textarea values use LF.
+  const copied = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+  expect(copied).toBe((await draft.inputValue()).replace(/\r\n/g, "\n"));
 
   await page.evaluate(() => {
     navigator.clipboard.writeText = () => Promise.reject(new Error("Clipboard unavailable"));
