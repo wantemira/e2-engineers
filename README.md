@@ -12,6 +12,8 @@
 make up
 ```
 
+Команда проверяет Docker Engine и Compose до сборки. На Windows при выключенном Engine она пытается запустить Docker Desktop и ждёт его готовности до 90 секунд. Docker Desktop должен быть установлен с Linux containers. Проверка отдельно — `make doctor`.
+
 Откройте [http://127.0.0.1:5173/](http://127.0.0.1:5173/). По умолчанию включён **Demo Mode**, ключ модели не требуется. Если порт занят, выполните `make up BUDDY_PORT=5180`.
 
 Для **Live LLM** создайте корневой `.env` по `.env.example`, сохранив значения уже существующего файла. Укажите `BUDDY_MODE=live`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` и `LLM_TIMEOUT=45s`, затем выполните `make up`. Требуется OpenAI-совместимый API с function calling; подробности — в [настройке LLM](docs/llm.md). Режим и модель отображаются в интерфейсе.

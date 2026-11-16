@@ -4,8 +4,14 @@ DEMO = $(COMPOSE) run --build --rm --no-deps --entrypoint ai-buddy-demo backend
 CHECKS ?= UNKNOWN
 ENVIRONMENT ?= STOPPED
 
+ifeq ($(OS),Windows_NT)
+DOCKER_READY = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/docker-ready.ps1
+else
+DOCKER_READY = sh scripts/docker-ready.sh
+endif
+
 .NOTPARALLEL:
-.PHONY: help up build restart down reset ps logs config demo-reset demo-initial demo-fixed demo-ci demo-environment training-up training-down training-test training-solution-test
+.PHONY: help doctor up build restart down reset ps logs config demo-reset demo-initial demo-fixed demo-ci demo-environment training-up training-down training-test training-solution-test
 
 define help_text
 make up       - build and start AI-Buddy
@@ -16,6 +22,7 @@ make build    - build service images
 make ps       - show service status
 make logs     - follow service logs
 make config   - validate Compose configuration
+make doctor   - check Docker Engine and Compose; start Desktop on Windows if needed
 make demo-reset - restore initial PR, fixture CI and mock environment; keep history
 make demo-initial - select the initial PR and keep history
 make demo-fixed   - select the corrected PR and keep history
@@ -29,6 +36,11 @@ endef
 
 help:
 	$(info $(help_text))
+
+doctor:
+	@$(DOCKER_READY)
+
+up build restart reset demo-reset demo-initial demo-fixed demo-ci demo-environment training-up training-test training-solution-test: | doctor
 
 up:
 	$(COMPOSE) up --build --remove-orphans --wait
